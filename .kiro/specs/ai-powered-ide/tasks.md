@@ -145,8 +145,9 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Integration with Change Executor
     - _Requirements: 5.2_
 
-  - [ ] 8.4 Write property test for natural language editing
-    - **Property 13: Natural Language Code Editing**
+  - [ ] 8.4 Write unit test for natural language editing UI
+    - Test edit instruction input and preview display
+    - Verify manual apply/reject workflow
     - **Validates: Requirements 5.2**
 
   - [ ] 8.5 Create AI chat panel
@@ -154,6 +155,11 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Context-aware responses using current file
     - Chat history and session management
     - _Requirements: 5.3_
+
+  - [ ] 8.6 Write unit test for chat panel UI
+    - Test message display and input handling
+    - Verify context integration
+    - **Validates: Requirements 5.3**
 
 - [ ] 9. IPC Message Contracts
   - [ ] 9.1 Define strict IPC message types
@@ -231,11 +237,15 @@ This implementation plan focuses on building a realistic MVP that delivers core 
 - **Strict IPC Contracts**: Typed message validation prevents IPC sprawl
 
 ### Testing Strategy
-- Tasks are comprehensive and include property-based testing from the start
+- Property tests for core safety boundaries (IPC security, token limits, change undo/redo, API rate limiting)
+- Unit tests for UI behavior and component interactions
 - Each property test runs minimum 100 iterations
-- Property tests validate universal correctness properties
-- Unit tests handle specific examples and edge cases
 - Integration tests verify end-to-end workflows
+
+### Critical UX Requirements
+- **Manual Apply**: AI edits are never auto-applied - user must click "Apply", "Reject", or "Undo"
+- **Throttled Completion**: AI requests debounced 300-500ms, cancelled on cursor move
+- **Trust & Safety**: All AI changes must be previewed before application
 
 ### File Structure
 ```
@@ -246,9 +256,12 @@ src/
 │   └── ipc-handlers.ts      # IPC message handlers
 ├── renderer/
 │   ├── index.html
-│   ├── editor.ts            # Monaco Editor integration
-│   ├── tabs.ts              # Tab management
 │   └── ui.ts                # UI components
+├── editor/
+│   ├── monaco-setup.ts      # Monaco Editor configuration
+│   ├── completion-provider.ts # AI completion integration
+│   ├── editor-events.ts     # Editor event handling
+│   └── tabs.ts              # Tab management
 ├── services/
 │   ├── file-service.ts      # File system operations
 │   ├── project-service.ts   # Project management
