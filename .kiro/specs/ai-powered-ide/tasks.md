@@ -116,7 +116,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Add cache invalidation when files change
     - _Requirements: 6.3, 6.5_
 
-  - [ ]* 7.4 Write property test for context caching
+  - [ ] 7.4 Write property test for context caching
     - **Property 16: Context Caching and Retrieval**
     - **Validates: Requirements 6.3, 6.5**
 
@@ -127,7 +127,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Context-aware completions using current file
     - _Requirements: 5.1_
 
-  - [ ]* 8.2 Write property test for code completion
+  - [ ] 8.2 Write property test for code completion
     - **Property 12: Real-time Code Completion**
     - **Validates: Requirements 5.1**
 
@@ -137,7 +137,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Integration with Change Executor
     - _Requirements: 5.2_
 
-  - [ ]* 8.4 Write property test for natural language editing
+  - [ ] 8.4 Write property test for natural language editing
     - **Property 13: Natural Language Code Editing**
     - **Validates: Requirements 5.2**
 
@@ -154,7 +154,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Add error handling for malformed messages
     - _Requirements: 1.3_
 
-  - [ ]* 9.2 Write property test for IPC validation
+  - [ ] 9.2 Write property test for IPC validation
     - **Property 1: IPC Security and Communication**
     - **Validates: Requirements 1.3**
 
@@ -165,7 +165,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Application crash prevention and reporting
     - _Requirements: 4.5, 12.7_
 
-  - [ ]* 10.2 Write property test for error messaging
+  - [ ] 10.2 Write property test for error messaging
     - **Property 34: Helpful Error Messaging**
     - **Validates: Requirements 12.7**
 
@@ -174,7 +174,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Recovery of work after unexpected shutdowns
     - _Requirements: 1.5_
 
-  - [ ]* 10.4 Write property test for resource cleanup
+  - [ ] 10.4 Write property test for resource cleanup
     - **Property 2: Resource Cleanup on Shutdown**
     - **Validates: Requirements 1.5**
 
@@ -185,7 +185,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Add loading states and user feedback
     - _Requirements: All core requirements_
 
-  - [ ]* 11.2 Write integration tests
+  - [ ] 11.2 Write integration tests
     - Test end-to-end workflows
     - Verify cross-component communication
     - Test error scenarios and recovery
@@ -223,7 +223,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
 - **Strict IPC Contracts**: Typed message validation prevents IPC sprawl
 
 ### Testing Strategy
-- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Tasks are comprehensive and include property-based testing from the start
 - Each property test runs minimum 100 iterations
 - Property tests validate universal correctness properties
 - Unit tests handle specific examples and edge cases
