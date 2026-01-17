@@ -45,7 +45,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Implement file watching for external changes
     - _Requirements: 3.1, 2.5_
 
-  - [ ]* 3.2 Write property test for file operations
+  - [ ] 3.2 Write property test for file operations
     - **Property 6: File System Operation Consistency**
     - **Validates: Requirements 3.1, 3.3, 3.5**
 
@@ -55,7 +55,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Add file creation, deletion, and renaming
     - _Requirements: 2.6, 3.2, 3.5_
 
-  - [ ]* 3.4 Write property test for project structure
+  - [ ] 3.4 Write property test for project structure
     - **Property 5: Project Structure Loading**
     - **Validates: Requirements 2.6**
 
@@ -70,7 +70,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Linux: libsecret/keyring integration
     - _Requirements: 9.1_
 
-  - [ ]* 5.2 Write property test for secure storage
+  - [ ] 5.2 Write property test for secure storage
     - **Property 24: Secure API Key Storage**
     - **Validates: Requirements 9.1**
 
@@ -81,11 +81,11 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Create prompt templates for different AI interactions
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-  - [ ]* 6.2 Write property test for API authentication
+  - [ ] 6.2 Write property test for API authentication
     - **Property 9: API Authentication Consistency**
     - **Validates: Requirements 4.2**
 
-  - [ ]* 6.3 Write property test for rate limiting
+  - [ ] 6.3 Write property test for rate limiting
     - **Property 10: API Rate Limiting and Error Handling**
     - **Validates: Requirements 4.3**
 
@@ -95,7 +95,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Implement rollback/undo system for AI changes
     - _Requirements: 7.3_
 
-  - [ ]* 6.3 Write property test for change undo/redo
+  - [ ] 6.3 Write property test for change undo/redo
     - **Property 20: AI Change Undo/Redo**
     - **Validates: Requirements 7.3**
 
@@ -107,7 +107,7 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Never include: node_modules, build output, minified files
     - _Requirements: 6.1, 6.2_
 
-  - [ ]* 7.2 Write property test for token management
+  - [ ] 7.2 Write property test for token management
     - **Property 15: Context Collection and Token Management**
     - **Validates: Requirements 6.1, 6.2**
 
