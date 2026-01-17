@@ -24,8 +24,9 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Configure editor themes and basic settings
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 2.2 Write property test for syntax highlighting
-    - **Property 3: File Type Syntax Highlighting**
+  - [ ] 2.2 Write unit test for syntax highlighting
+    - Test syntax highlighting for common file types
+    - Verify theme application and color schemes
     - **Validates: Requirements 2.2**
 
   - [ ] 2.3 Implement file tab system
@@ -34,8 +35,9 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - Track active tab state across the application
     - _Requirements: 2.3, 2.4_
 
-  - [ ] 2.4 Write property test for tab management
-    - **Property 4: Tab Management Consistency**
+  - [ ] 2.4 Write unit test for tab management
+    - Test tab opening, closing, and switching
+    - Verify active tab state tracking
     - **Validates: Requirements 2.3, 2.4**
 
 - [ ] 3. File System and Project Management
@@ -89,13 +91,15 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - **Property 10: API Rate Limiting and Error Handling**
     - **Validates: Requirements 4.3**
 
-  - [ ] 6.2 Implement Change Executor (Critical Architecture)
+  - [ ] 6.4 Implement Change Executor (Critical Architecture)
     - Create ChangeExecutor interface for applying AI changes
     - Add change preview functionality
     - Implement rollback/undo system for AI changes
+    - Add manual apply UX: "Apply", "Reject", "Undo last AI change"
+    - AI edits are never auto-applied - user must explicitly approve
     - _Requirements: 7.3_
 
-  - [ ] 6.3 Write property test for change undo/redo
+  - [ ] 6.5 Write property test for change undo/redo
     - **Property 20: AI Change Undo/Redo**
     - **Validates: Requirements 7.3**
 
@@ -121,14 +125,18 @@ This implementation plan focuses on building a realistic MVP that delivers core 
     - **Validates: Requirements 6.3, 6.5**
 
 - [ ] 8. Core AI Features
-  - [ ] 8.1 Implement inline code completion
+  - [ ] 8.1 Implement inline code completion with throttling
     - Real-time AI suggestions as user types
+    - Debounce AI requests (300-500ms delay)
+    - Cancel in-flight requests on cursor move
+    - Ignore completions when editor is dirty
     - Integration with Monaco Editor's completion provider
     - Context-aware completions using current file
     - _Requirements: 5.1_
 
-  - [ ] 8.2 Write property test for code completion
-    - **Property 12: Real-time Code Completion**
+  - [ ] 8.2 Write unit test for code completion UI
+    - Test completion display and selection
+    - Verify throttling and cancellation behavior
     - **Validates: Requirements 5.1**
 
   - [ ] 8.3 Build natural language code editing
