@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <title>AI-Powered IDE</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: #252526;
+            border-right: 1px solid #3e3e42;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 10px;
+            background-color: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .file-explorer {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tab-bar {
+            background-color: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            align-items: center;
+            min-height: 35px;
+            padding: 0 10px;
+        }
+
+        .tab {
+            background-color: #2d2d30;
+            border: 1px solid #3e3e42;
+            border-bottom: none;
+            padding: 8px 12px;
+            margin-right: 2px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab.active {
+            background-color: #1e1e1e;
+            border-color: #007acc;
+        }
+
+        .tab-close {
+            cursor: pointer;
+            opacity: 0.6;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .tab-close:hover {
+            opacity: 1;
+        }
+
+        .editor-container {
+            flex: 1;
+            background-color: #1e1e1e;
+            position: relative;
+        }
+
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .welcome-title {
+            font-size: 24px;
+            font-weight: 300;
+            margin-bottom: 20px;
+            color: #cccccc;
+        }
+
+        .welcome-subtitle {
+            font-size: 14px;
+            color: #969696;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .welcome-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .welcome-button {
+            background-color: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background-color 0.2s;
+        }
+
+        .welcome-button:hover {
+            background-color: #1177bb;
+        }
+
+        .welcome-button.secondary {
+            background-color: transparent;
+            border: 1px solid #3e3e42;
+            color: #cccccc;
+        }
+
+        .welcome-button.secondary:hover {
+            background-color: #3e3e42;
+        }
+
+        .status-bar {
+            background-color: #007acc;
+            color: white;
+            padding: 4px 10px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #969696;
+        }
+
+        .error-message {
+            display: none;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: #f14c4c;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 3px;
+            font-size: 13px;
+            z-index: 1000;
+        }
+
+        /* File tree styles */
+        .file-item {
+            padding: 2px 0;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .file-item:hover {
+            background-color: #2a2d2e;
+        }
+
+        .file-item.selected {
+            background-color: #094771;
+        }
+
+        .file-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
+        .folder-icon::before {
+            content: "📁";
+        }
+
+        .file-icon::before {
+            content: "📄";
+        }
+
+        .js-file::before {
+            content: "🟨";
+        }
+
+        .ts-file::before {
+            content: "🔷";
+        }
+
+        .py-file::before {
+            content: "🐍";
+        }
+
+        .md-file::before {
+            content: "📝";
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">Explorer</div>
+            <div class="file-explorer" id="fileExplorer">
+                <div style="text-align: center; color: #969696; font-size: 13px; margin-top: 20px;">
+                    No folder opened
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Tab Bar -->
+            <div class="tab-bar" id="tabBar">
+                <!-- Tabs will be dynamically added here -->
+            </div>
+
+            <!-- Editor Container -->
+            <div class="editor-container" id="editorContainer">
+                <div class="welcome-screen" id="welcomeScreen">
+                    <h1 class="welcome-title">AI-Powered IDE</h1>
+                    <p class="welcome-subtitle">
+                        A revolutionary desktop IDE with AI assistance powered by Gemini API.<br>
+                        Get started by opening a file or folder.
+                    </p>
+                    <div class="welcome-actions">
+                        <button class="welcome-button" onclick="openFile()">Open File</button>
+                        <button class="welcome-button secondary" onclick="openFolder()">Open Folder</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Bar -->
+            <div class="status-bar">
+                <div>Ready</div>
+                <div id="statusRight">AI-Powered IDE v1.0.0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading indicator -->
+    <div class="loading" id="loading">Loading...</div>
+
+    <!-- Error message -->
+    <div class="error-message" id="errorMessage"></div>
+
+    <script>
+        // Basic UI functionality
+        let currentProject = null;
+        let openTabs = [];
+        let activeTabId = null;
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('AI-Powered IDE starting...');
+            
+            // Check if electronAPI is available
+            if (typeof window.electronAPI === 'undefined') {
+                showError('Electron API not available. Please restart the application.');
+                return;
+            }
+
+            // Listen for menu actions
+            window.electronAPI.events.onFileChanged((filePath) => {
+                console.log('File changed:', filePath);
+                // TODO: Refresh file content if it's open
+            });
+
+            window.electronAPI.events.onProjectChanged((projectData) => {
+                console.log('Project changed:', projectData);
+                currentProject = projectData;
+                updateFileExplorer();
+            });
+
+            console.log('AI-Powered IDE initialized successfully');
+        });
+
+        // File operations
+        async function openFile() {
+            try {
+                showLoading(true);
+                const result = await window.electronAPI.system.showOpenDialog({
+                    properties: ['openFile'],
+                    filters: [
+                        { name: 'All Files', extensions: ['*'] },
+                        { name: 'JavaScript', extensions: ['js', 'jsx'] },
+                        { name: 'TypeScript', extensions: ['ts', 'tsx'] },
+                        { name: 'Python', extensions: ['py'] },
+                        { name: 'Text Files', extensions: ['txt', 'md'] }
+                    ]
+                });
+
+                if (!result.canceled && result.filePaths.length > 0) {
+                    await openFileInEditor(result.filePaths[0]);
+                }
+            } catch (error) {
+                showError('Failed to open file: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function openFolder() {
+            try {
+                showLoading(true);
+                const result = await window.electronAPI.system.showOpenDialog({
+                    properties: ['openDirectory']
+                });
+
+                if (!result.canceled && result.filePaths.length > 0) {
+                    await loadProject(result.filePaths[0]);
+                }
+            } catch (error) {
+                showError('Failed to open folder: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function openFileInEditor(filePath) {
+            try {
+                // Check if file is already open
+                const existingTab = openTabs.find(tab => tab.filePath === filePath);
+                if (existingTab) {
+                    switchToTab(existingTab.id);
+                    return;
+                }
+
+                // Read file content
+                const content = await window.electronAPI.fileOperations.readFile(filePath);
+                
+                // Create new tab
+                const tab = {
+                    id: Date.now().toString(),
+                    filePath: filePath,
+                    fileName: filePath.split(/[/\\]/).pop(),
+                    content: content,
+                    isDirty: false
+                };
+
+                openTabs.push(tab);
+                createTabElement(tab);
+                switchToTab(tab.id);
+                
+                // Hide welcome screen
+                document.getElementById('welcomeScreen').style.display = 'none';
+                
+            } catch (error) {
+                showError('Failed to open file: ' + error.message);
+            }
+        }
+
+        async function loadProject(folderPath) {
+            try {
+                const project = await window.electronAPI.projectOperations.loadProject(folderPath);
+                currentProject = project;
+                updateFileExplorer();
+                updateStatus(`Loaded project: ${project.rootPath}`);
+            } catch (error) {
+                showError('Failed to load project: ' + error.message);
+            }
+        }
+
+        // Tab management
+        function createTabElement(tab) {
+            const tabBar = document.getElementById('tabBar');
+            const tabElement = document.createElement('div');
+            tabElement.className = 'tab';
+            tabElement.dataset.tabId = tab.id;
+            tabElement.innerHTML = `
+                <span>${tab.fileName}</span>
+                <span class="tab-close" onclick="closeTab('${tab.id}')">&times;</span>
+            `;
+            tabElement.onclick = (e) => {
+                if (!e.target.classList.contains('tab-close')) {
+                    switchToTab(tab.id);
+                }
+            };
+            tabBar.appendChild(tabElement);
+        }
+
+        function switchToTab(tabId) {
+            // Update active tab
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
+            if (tabElement) {
+                tabElement.classList.add('active');
+                activeTabId = tabId;
+                
+                // TODO: Load content in Monaco Editor
+                const tab = openTabs.find(t => t.id === tabId);
+                if (tab) {
+                    console.log('Switching to tab:', tab.fileName);
+                }
+            }
+        }
+
+        function closeTab(tabId) {
+            const tabIndex = openTabs.findIndex(tab => tab.id === tabId);
+            if (tabIndex === -1) return;
+
+            // Remove tab from array
+            openTabs.splice(tabIndex, 1);
+            
+            // Remove tab element
+            const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
+            if (tabElement) {
+                tabElement.remove();
+            }
+
+            // Switch to another tab or show welcome screen
+            if (openTabs.length > 0) {
+                const newActiveTab = openTabs[Math.max(0, tabIndex - 1)];
+                switchToTab(newActiveTab.id);
+            } else {
+                activeTabId = null;
+                document.getElementById('welcomeScreen').style.display = 'flex';
+            }
+        }
+
+        // File explorer
+        function updateFileExplorer() {
+            const explorer = document.getElementById('fileExplorer');
+            
+            if (!currentProject || !currentProject.files) {
+                explorer.innerHTML = '<div style="text-align: center; color: #969696; font-size: 13px; margin-top: 20px;">No folder opened</div>';
+                return;
+            }
+
+            explorer.innerHTML = '';
+            
+            // Group files by directory
+            const fileTree = buildFileTree(currentProject.files);
+            renderFileTree(explorer, fileTree);
+        }
+
+        function buildFileTree(files) {
+            const tree = {};
+            
+            files.forEach(file => {
+                const parts = file.path.split(/[/\\]/);
+                let current = tree;
+                
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    if (!current[part]) {
+                        current[part] = i === parts.length - 1 ? file : {};
+                    }
+                    current = current[part];
+                }
+            });
+            
+            return tree;
+        }
+
+        function renderFileTree(container, tree, level = 0) {
+            Object.keys(tree).forEach(key => {
+                const item = tree[key];
+                const itemElement = document.createElement('div');
+                itemElement.className = 'file-item';
+                itemElement.style.paddingLeft = (level * 15) + 'px';
+                
+                if (item.path) {
+                    // It's a file
+                    const ext = item.extension.toLowerCase();
+                    let iconClass = 'file-icon';
+                    if (ext === '.js' || ext === '.jsx') iconClass = 'js-file';
+                    else if (ext === '.ts' || ext === '.tsx') iconClass = 'ts-file';
+                    else if (ext === '.py') iconClass = 'py-file';
+                    else if (ext === '.md') iconClass = 'md-file';
+                    
+                    itemElement.innerHTML = `<span class="${iconClass}"></span><span>${key}</span>`;
+                    itemElement.onclick = () => openFileInEditor(currentProject.rootPath + '/' + item.path);
+                } else {
+                    // It's a folder
+                    itemElement.innerHTML = `<span class="folder-icon"></span><span>${key}</span>`;
+                    itemElement.onclick = () => {
+                        // TODO: Implement folder expand/collapse
+                    };
+                }
+                
+                container.appendChild(itemElement);
+                
+                // Recursively render subfolders
+                if (!item.path) {
+                    renderFileTree(container, item, level + 1);
+                }
+            });
+        }
+
+        // Utility functions
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+
+        function updateStatus(message) {
+            document.getElementById('statusRight').textContent = message;
+        }
+
+        // Handle menu actions from main process
+        if (typeof window.electronAPI !== 'undefined') {
+            // TODO: Listen for menu actions when IPC is fully implemented
+        }
+    </script>
+</body>
+</html>
