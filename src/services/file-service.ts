@@ -7,10 +7,12 @@ export class FileSystemService {
 
   async readFile(filePath: string): Promise<string> {
     try {
+      console.log(`FileSystemService: Reading file ${filePath}`);
       const content = await fs.readFile(filePath, 'utf-8');
+      console.log(`FileSystemService: Successfully read file ${filePath}, length: ${content.length}`);
       return content;
     } catch (error) {
-      console.error(`Error reading file ${filePath}:`, error);
+      console.error(`FileSystemService: Error reading file ${filePath}:`, error);
       throw new Error(`Failed to read file: ${filePath}`);
     }
   }

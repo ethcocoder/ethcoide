@@ -13,9 +13,12 @@ function registerIPCHandlers() {
     // File operations
     electron_1.ipcMain.handle('file-operation', async (event, operation) => {
         try {
+            console.log('IPC: Received file operation:', operation);
             switch (operation.type) {
                 case 'read':
-                    return await fileService.readFile(operation.filePath);
+                    const content = await fileService.readFile(operation.filePath);
+                    console.log('IPC: File read successful, length:', content.length);
+                    return content;
                 case 'write':
                     if (!operation.content) {
                         throw new Error('Content is required for write operation');
@@ -37,7 +40,7 @@ function registerIPCHandlers() {
             }
         }
         catch (error) {
-            console.error('File operation error:', error);
+            console.error('IPC: File operation error:', error);
             throw error;
         }
     });
@@ -67,12 +70,15 @@ function registerIPCHandlers() {
     // Project operations
     electron_1.ipcMain.handle('project-operation', async (event, operation) => {
         try {
+            console.log('IPC: Received project operation:', operation);
             switch (operation.type) {
                 case 'load':
                     if (!operation.rootPath) {
                         throw new Error('Root path is required for load operation');
                     }
-                    return await projectService.loadProject(operation.rootPath);
+                    const project = await projectService.loadProject(operation.rootPath);
+                    console.log('IPC: Project loaded successfully:', project.summary);
+                    return project;
                 case 'create':
                     if (!operation.rootPath) {
                         throw new Error('Root path is required for create operation');
@@ -85,7 +91,7 @@ function registerIPCHandlers() {
             }
         }
         catch (error) {
-            console.error('Project operation error:', error);
+            console.error('IPC: Project operation error:', error);
             throw error;
         }
     });

@@ -42,6 +42,7 @@ class ProjectService {
     }
     async loadProject(rootPath) {
         try {
+            console.log(`Loading project from: ${rootPath}`);
             // Validate that the path exists and is a directory
             const stats = await fs.stat(rootPath);
             if (!stats.isDirectory()) {
@@ -56,17 +57,20 @@ class ProjectService {
                 tokenCount: 0
             };
             // Load project files (basic implementation)
+            console.log('Scanning project files...');
             project.files = await this.scanProjectFiles(rootPath);
+            console.log(`Found ${project.files.length} files`);
             // TODO: Detect dependencies from package.json, requirements.txt, etc.
             project.dependencies = await this.detectDependencies(rootPath);
             // TODO: Generate project summary
             project.summary = `Project loaded from ${rootPath} with ${project.files.length} files`;
             this.currentProject = project;
+            console.log('Project loaded successfully:', project.summary);
             return project;
         }
         catch (error) {
             console.error(`Error loading project ${rootPath}:`, error);
-            throw new Error(`Failed to load project: ${rootPath}`);
+            throw new Error(`Failed to load project: ${rootPath} - ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     async createProject(rootPath, template) {
@@ -94,10 +98,12 @@ class ProjectService {
     getCurrentProject() {
         return this.currentProject;
     }
-    async scanProjectFiles(rootPath, maxDepth = 3) {
+    async scanProjectFiles(rootPath, maxDepth = 5) {
         const files = [];
         try {
+            console.log(`Scanning project files in: ${rootPath}`);
             await this.scanDirectory(rootPath, rootPath, files, 0, maxDepth);
+            console.log(`Found ${files.length} files`);
         }
         catch (error) {
             console.error('Error scanning project files:', error);
@@ -109,6 +115,7 @@ class ProjectService {
             return;
         try {
             const entries = await fs.readdir(dirPath, { withFileTypes: true });
+            console.log(`Scanning directory: ${dirPath}, found ${entries.length} entries`);
             for (const entry of entries) {
                 const fullPath = path.join(dirPath, entry.name);
                 const relativePath = path.relative(rootPath, fullPath);
@@ -119,13 +126,14 @@ class ProjectService {
                 if (entry.isFile()) {
                     const stats = await fs.stat(fullPath);
                     const fileInfo = {
-                        path: relativePath,
+                        path: relativePath.replace(/\\/g, '/'), // Normalize to forward slashes
                         name: entry.name,
                         extension: path.extname(entry.name),
                         size: stats.size,
                         lastModified: stats.mtime
                     };
                     files.push(fileInfo);
+                    console.log(`Added file: ${fileInfo.path}`);
                 }
                 else if (entry.isDirectory()) {
                     await this.scanDirectory(fullPath, rootPath, files, currentDepth + 1, maxDepth);

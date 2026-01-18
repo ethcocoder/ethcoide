@@ -99,7 +99,9 @@ export class MonacoEditorManager {
       formatOnType: true,
       renderWhitespace: 'selection',
       renderControlCharacters: false,
-      renderIndentGuides: true,
+      guides: {
+        indentation: true
+      },
       cursorBlinking: 'blink',
       cursorSmoothCaretAnimation: 'on',
       smoothScrolling: true,

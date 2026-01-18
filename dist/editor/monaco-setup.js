@@ -111,7 +111,7 @@ class MonacoEditorManager {
             suggestOnTriggerCharacters: true,
             acceptSuggestionOnEnter: 'on',
             tabCompletion: 'on',
-            wordBasedSuggestions: true,
+            wordBasedSuggestions: 'off',
             parameterHints: {
                 enabled: true
             },
@@ -129,9 +129,11 @@ class MonacoEditorManager {
             formatOnType: true,
             renderWhitespace: 'selection',
             renderControlCharacters: false,
-            renderIndentGuides: true,
+            guides: {
+                indentation: true
+            },
             cursorBlinking: 'blink',
-            cursorSmoothCaretAnimation: true,
+            cursorSmoothCaretAnimation: 'on',
             smoothScrolling: true,
             mouseWheelZoom: true
         });
