@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "chokidar": "^3.5.0",
-    "keytar": "^7.9.0"
+    "keytar": "^7.9.0",
+    "monaco-editor": "^0.55.1"
   }
 }

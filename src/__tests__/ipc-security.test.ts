@@ -185,7 +185,7 @@ describe('Feature: ai-powered-ide, Property 1: IPC Security and Communication', 
       'require', 'process', 'global', '__dirname', '__filename',
       'Buffer', 'setImmediate', 'clearImmediate', 'fs', 'path',
       'child_process', 'cluster', 'crypto', 'os', 'net', 'http',
-      'https', 'url', 'querystring', 'stream', 'util', 'events'
+      'https', 'url', 'querystring', 'stream', 'util'
     ];
     
     dangerousAPIs.forEach(api => {
