@@ -1,407 +1,391 @@
-import { MonacoEditorManager } from './monaco-setup';
+/**
+ * Tab Management System for AI-Powered IDE
+ * Handles file tabs, switching, closing, and state tracking
+ */
 
 export interface Tab {
   id: string;
   filePath: string;
   fileName: string;
+  content: string;
   isDirty: boolean;
-  isActive: boolean;
-  language: string;
-  content?: string;
+  language?: string;
 }
 
 export class TabManager {
-  private tabs: Map<string, Tab> = new Map();
+  private tabs: Tab[] = [];
   private activeTabId: string | null = null;
-  private editorManager: MonacoEditorManager;
-  private tabBarElement: HTMLElement;
+  private tabsContainer: HTMLElement | null = null;
+  private onTabChange?: (tab: Tab | null) => void;
+  private onTabClose?: (tab: Tab) => void;
 
-  constructor(editorManager: MonacoEditorManager, tabBarElement: HTMLElement) {
-    this.editorManager = editorManager;
-    this.tabBarElement = tabBarElement;
-    this.setupEventListeners();
+  constructor() {
+    this.initializeTabContainer();
+    this.setupKeyboardShortcuts();
   }
 
   /**
-   * Open a file in a new tab or switch to existing tab
+   * Initialize tab container and scroll buttons
    */
-  async openFile(filePath: string): Promise<Tab> {
-    // Check if file is already open
-    const existingTab = this.findTabByPath(filePath);
+  private initializeTabContainer(): void {
+    this.tabsContainer = document.getElementById('tabsContainer');
+    this.updateScrollButtons();
+  }
+
+  /**
+   * Set callback for tab change events
+   */
+  setOnTabChange(callback: (tab: Tab | null) => void): void {
+    this.onTabChange = callback;
+  }
+
+  /**
+   * Set callback for tab close events
+   */
+  setOnTabClose(callback: (tab: Tab) => void): void {
+    this.onTabClose = callback;
+  }
+
+  /**
+   * Add a new tab
+   */
+  addTab(filePath: string, fileName: string, content: string): Tab {
+    // Check if tab already exists
+    const existingTab = this.tabs.find(tab => tab.filePath === filePath);
     if (existingTab) {
-      this.switchTab(existingTab.id);
+      this.switchToTab(existingTab.id);
       return existingTab;
     }
 
-    try {
-      // Read file content via IPC
-      const content = await window.electronAPI.fileOperations.readFile(filePath);
-      
-      // Create new tab
-      const tab: Tab = {
-        id: this.generateTabId(),
-        filePath: filePath,
-        fileName: this.extractFileName(filePath),
-        isDirty: false,
-        isActive: false,
-        language: this.editorManager.getLanguageForFile(filePath),
-        content: content
-      };
+    // Create new tab
+    const tab: Tab = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      filePath,
+      fileName,
+      content,
+      isDirty: false,
+      language: this.getLanguageFromFileName(fileName)
+    };
 
-      // Add tab to collection
-      this.tabs.set(tab.id, tab);
-      
-      // Create tab element in UI
-      this.createTabElement(tab);
-      
-      // Switch to the new tab
-      this.switchTab(tab.id);
-      
-      return tab;
-    } catch (error) {
-      console.error('Failed to open file:', error);
-      throw error;
-    }
+    this.tabs.push(tab);
+    this.createTabElement(tab);
+    this.switchToTab(tab.id);
+    this.updateScrollButtons();
+
+    return tab;
   }
 
   /**
-   * Close a tab
+   * Remove a tab
    */
-  closeTab(tabId: string): boolean {
-    const tab = this.tabs.get(tabId);
-    if (!tab) {
-      return false;
+  removeTab(tabId: string): void {
+    const tabIndex = this.tabs.findIndex(tab => tab.id === tabId);
+    if (tabIndex === -1) return;
+
+    const tab = this.tabs[tabIndex];
+    
+    // Call close callback
+    if (this.onTabClose) {
+      this.onTabClose(tab);
     }
 
-    // Check if tab has unsaved changes
-    if (tab.isDirty) {
-      const shouldClose = confirm(`File "${tab.fileName}" has unsaved changes. Close anyway?`);
-      if (!shouldClose) {
-        return false;
-      }
+    // Remove from array
+    this.tabs.splice(tabIndex, 1);
+
+    // Remove DOM element
+    const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
+    if (tabElement) {
+      tabElement.remove();
     }
 
-    // Remove tab from collection
-    this.tabs.delete(tabId);
-    
-    // Remove tab element from UI
-    this.removeTabElement(tabId);
-    
-    // If this was the active tab, switch to another tab
+    // Handle active tab change
     if (this.activeTabId === tabId) {
-      this.activeTabId = null;
-      
-      // Switch to the last remaining tab
-      const remainingTabs = Array.from(this.tabs.values());
-      if (remainingTabs.length > 0) {
-        this.switchTab(remainingTabs[remainingTabs.length - 1].id);
+      if (this.tabs.length > 0) {
+        // Switch to adjacent tab
+        const newActiveIndex = Math.max(0, tabIndex - 1);
+        this.switchToTab(this.tabs[newActiveIndex].id);
       } else {
-        // No tabs left, show welcome screen
-        this.showWelcomeScreen();
+        // No tabs left
+        this.activeTabId = null;
+        if (this.onTabChange) {
+          this.onTabChange(null);
+        }
       }
     }
 
-    return true;
+    this.updateScrollButtons();
   }
 
   /**
    * Switch to a specific tab
    */
-  switchTab(tabId: string): void {
-    const tab = this.tabs.get(tabId);
-    if (!tab) {
-      return;
+  switchToTab(tabId: string): void {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    // Update active state in DOM
+    document.querySelectorAll('.tab').forEach(tabEl => {
+      tabEl.classList.remove('active');
+    });
+
+    const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
+    if (tabElement) {
+      tabElement.classList.add('active');
+      this.scrollToTab(tabElement as HTMLElement);
     }
 
-    // Update active states
-    if (this.activeTabId) {
-      const previousTab = this.tabs.get(this.activeTabId);
-      if (previousTab) {
-        previousTab.isActive = false;
-        this.updateTabElement(previousTab);
-      }
-    }
-
-    tab.isActive = true;
     this.activeTabId = tabId;
-    
-    // Update UI
-    this.updateTabElement(tab);
-    this.hideWelcomeScreen();
-    
-    // Load content in editor
-    if (tab.content !== undefined) {
-      this.editorManager.loadFile(tab.filePath, tab.content);
-    }
 
-    // Emit tab switch event
-    window.dispatchEvent(new CustomEvent('tab-switched', {
-      detail: { tab }
-    }));
+    // Call change callback
+    if (this.onTabChange) {
+      this.onTabChange(tab);
+    }
   }
 
   /**
-   * Get active tab
+   * Get the currently active tab
    */
   getActiveTab(): Tab | null {
-    if (!this.activeTabId) {
-      return null;
-    }
-    return this.tabs.get(this.activeTabId) || null;
+    if (!this.activeTabId) return null;
+    return this.tabs.find(tab => tab.id === this.activeTabId) || null;
   }
 
   /**
    * Get all tabs
    */
   getAllTabs(): Tab[] {
-    return Array.from(this.tabs.values());
+    return [...this.tabs];
   }
 
   /**
-   * Mark tab as dirty (has unsaved changes)
+   * Update tab content
    */
-  markTabDirty(tabId: string, isDirty: boolean): void {
-    const tab = this.tabs.get(tabId);
-    if (!tab) {
-      return;
-    }
+  updateTabContent(tabId: string, content: string, isDirty: boolean = true): void {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
 
+    tab.content = content;
     tab.isDirty = isDirty;
-    this.updateTabElement(tab);
+
+    this.updateTabTitle(tab);
   }
 
   /**
-   * Save current tab
+   * Mark tab as saved (not dirty)
    */
-  async saveActiveTab(): Promise<boolean> {
-    const activeTab = this.getActiveTab();
-    if (!activeTab) {
-      return false;
-    }
+  markTabAsSaved(tabId: string): void {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
 
-    try {
-      const content = this.editorManager.getCurrentContent();
-      await window.electronAPI.fileOperations.writeFile(activeTab.filePath, content);
-      
-      // Update tab content and mark as clean
-      activeTab.content = content;
-      this.markTabDirty(activeTab.id, false);
-      
-      return true;
-    } catch (error) {
-      console.error('Failed to save file:', error);
-      return false;
-    }
+    tab.isDirty = false;
+    this.updateTabTitle(tab);
   }
 
   /**
-   * Save tab as new file
+   * Close all tabs
    */
-  async saveActiveTabAs(): Promise<boolean> {
-    const activeTab = this.getActiveTab();
-    if (!activeTab) {
-      return false;
-    }
-
-    try {
-      const result = await window.electronAPI.system.showSaveDialog({
-        defaultPath: activeTab.fileName,
-        filters: [
-          { name: 'All Files', extensions: ['*'] },
-          { name: 'JavaScript', extensions: ['js', 'jsx'] },
-          { name: 'TypeScript', extensions: ['ts', 'tsx'] },
-          { name: 'Python', extensions: ['py'] },
-          { name: 'Text Files', extensions: ['txt', 'md'] }
-        ]
-      });
-
-      if (result.canceled || !result.filePath) {
-        return false;
-      }
-
-      const content = this.editorManager.getCurrentContent();
-      await window.electronAPI.fileOperations.writeFile(result.filePath, content);
-      
-      // Update tab with new file path
-      activeTab.filePath = result.filePath;
-      activeTab.fileName = this.extractFileName(result.filePath);
-      activeTab.content = content;
-      activeTab.language = this.editorManager.getLanguageForFile(result.filePath);
-      this.markTabDirty(activeTab.id, false);
-      
-      // Update tab element
-      this.updateTabElement(activeTab);
-      
-      return true;
-    } catch (error) {
-      console.error('Failed to save file as:', error);
-      return false;
-    }
+  closeAllTabs(): void {
+    const tabIds = this.tabs.map(tab => tab.id);
+    tabIds.forEach(id => this.removeTab(id));
   }
 
   /**
-   * Create tab element in the UI
+   * Close all tabs except the specified one
+   */
+  closeOtherTabs(keepTabId: string): void {
+    const tabIds = this.tabs.filter(tab => tab.id !== keepTabId).map(tab => tab.id);
+    tabIds.forEach(id => this.removeTab(id));
+  }
+
+  /**
+   * Create DOM element for tab
    */
   private createTabElement(tab: Tab): void {
+    if (!this.tabsContainer) return;
+
     const tabElement = document.createElement('div');
     tabElement.className = 'tab';
-    tabElement.dataset.tabId = tab.id;
+    tabElement.setAttribute('data-tab-id', tab.id);
+    tabElement.onclick = () => this.switchToTab(tab.id);
+
+    const fileIcon = this.getFileIcon(tab.fileName);
     
     tabElement.innerHTML = `
-      <span class="tab-icon">${this.getFileIcon(tab.fileName)}</span>
-      <span class="tab-name">${tab.fileName}</span>
-      <span class="tab-dirty-indicator" style="display: none;">●</span>
-      <span class="tab-close" title="Close">×</span>
+      <span class="tab-icon">${fileIcon}</span>
+      <span class="tab-title">${tab.fileName}</span>
+      <span class="tab-close" onclick="event.stopPropagation(); tabManager.removeTab('${tab.id}')">&times;</span>
     `;
 
-    // Add event listeners
-    tabElement.addEventListener('click', (e) => {
-      if (!(e.target as HTMLElement).classList.contains('tab-close')) {
-        this.switchTab(tab.id);
-      }
-    });
-
-    const closeButton = tabElement.querySelector('.tab-close') as HTMLElement;
-    closeButton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.closeTab(tab.id);
-    });
-
-    this.tabBarElement.appendChild(tabElement);
+    this.tabsContainer.appendChild(tabElement);
   }
 
   /**
-   * Update tab element in the UI
+   * Update tab title to show dirty state
    */
-  private updateTabElement(tab: Tab): void {
-    const tabElement = this.tabBarElement.querySelector(`[data-tab-id="${tab.id}"]`) as HTMLElement;
-    if (!tabElement) {
-      return;
-    }
+  private updateTabTitle(tab: Tab): void {
+    const tabElement = document.querySelector(`[data-tab-id="${tab.id}"]`);
+    if (!tabElement) return;
 
-    // Update active state
-    if (tab.isActive) {
-      tabElement.classList.add('active');
-    } else {
-      tabElement.classList.remove('active');
-    }
-
-    // Update dirty indicator
-    const dirtyIndicator = tabElement.querySelector('.tab-dirty-indicator') as HTMLElement;
-    if (dirtyIndicator) {
-      dirtyIndicator.style.display = tab.isDirty ? 'inline' : 'none';
-    }
-
-    // Update tab name
-    const tabName = tabElement.querySelector('.tab-name') as HTMLElement;
-    if (tabName) {
-      tabName.textContent = tab.fileName;
-    }
-
-    // Update icon
-    const tabIcon = tabElement.querySelector('.tab-icon') as HTMLElement;
-    if (tabIcon) {
-      tabIcon.textContent = this.getFileIcon(tab.fileName);
+    const titleElement = tabElement.querySelector('.tab-title');
+    if (titleElement) {
+      titleElement.textContent = tab.isDirty ? `${tab.fileName} •` : tab.fileName;
     }
   }
 
   /**
-   * Remove tab element from the UI
-   */
-  private removeTabElement(tabId: string): void {
-    const tabElement = this.tabBarElement.querySelector(`[data-tab-id="${tabId}"]`);
-    if (tabElement) {
-      tabElement.remove();
-    }
-  }
-
-  /**
-   * Find tab by file path
-   */
-  private findTabByPath(filePath: string): Tab | undefined {
-    return Array.from(this.tabs.values()).find(tab => tab.filePath === filePath);
-  }
-
-  /**
-   * Generate unique tab ID
-   */
-  private generateTabId(): string {
-    return 'tab-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-  }
-
-  /**
-   * Extract file name from path
-   */
-  private extractFileName(filePath: string): string {
-    return filePath.split(/[/\\]/).pop() || 'Untitled';
-  }
-
-  /**
-   * Get file icon based on extension
+   * Get file icon based on file extension
    */
   private getFileIcon(fileName: string): string {
     const extension = fileName.toLowerCase().split('.').pop();
     
     const iconMap: { [key: string]: string } = {
-      'js': '🟨',
-      'jsx': '🟨',
-      'ts': '🔷',
-      'tsx': '🔷',
-      'py': '🐍',
+      'ts': '📘',
+      'tsx': '⚛️',
+      'js': '📜',
+      'jsx': '⚛️',
+      'json': '📋',
       'html': '🌐',
       'css': '🎨',
       'scss': '🎨',
-      'json': '📋',
       'md': '📝',
-      'txt': '📄',
+      'py': '🐍',
+      'java': '☕',
+      'cpp': '⚙️',
+      'c': '⚙️',
+      'php': '🐘',
+      'rb': '💎',
+      'go': '🐹',
+      'rs': '🦀',
+      'xml': '📄',
       'yml': '⚙️',
-      'yaml': '⚙️',
-      'xml': '📄'
+      'yaml': '⚙️'
     };
 
     return iconMap[extension || ''] || '📄';
   }
 
   /**
-   * Setup event listeners
+   * Get language from file name
    */
-  private setupEventListeners(): void {
-    // Listen for editor content changes to mark tabs as dirty
-    window.addEventListener('editor-content-changed', () => {
-      const activeTab = this.getActiveTab();
-      if (activeTab) {
-        const isDirty = this.editorManager.isDirty();
-        this.markTabDirty(activeTab.id, isDirty);
-      }
-    });
+  private getLanguageFromFileName(fileName: string): string {
+    const extension = fileName.toLowerCase().split('.').pop();
+    
+    const languageMap: { [key: string]: string } = {
+      'ts': 'typescript',
+      'tsx': 'typescript',
+      'js': 'javascript',
+      'jsx': 'javascript',
+      'py': 'python',
+      'json': 'json',
+      'html': 'html',
+      'htm': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'less': 'less',
+      'md': 'markdown',
+      'yml': 'yaml',
+      'yaml': 'yaml',
+      'xml': 'xml',
+      'txt': 'plaintext'
+    };
 
-    // Listen for keyboard shortcuts
+    return languageMap[extension || ''] || 'plaintext';
+  }
+
+  /**
+   * Scroll to show the specified tab
+   */
+  private scrollToTab(tabElement: HTMLElement): void {
+    if (!this.tabsContainer) return;
+
+    const containerRect = this.tabsContainer.getBoundingClientRect();
+    const tabRect = tabElement.getBoundingClientRect();
+
+    if (tabRect.left < containerRect.left) {
+      // Tab is to the left of visible area
+      this.tabsContainer.scrollLeft -= (containerRect.left - tabRect.left + 20);
+    } else if (tabRect.right > containerRect.right) {
+      // Tab is to the right of visible area
+      this.tabsContainer.scrollLeft += (tabRect.right - containerRect.right + 20);
+    }
+  }
+
+  /**
+   * Update scroll button states
+   */
+  private updateScrollButtons(): void {
+    if (!this.tabsContainer) return;
+
+    const leftButton = document.getElementById('tabScrollLeft') as HTMLButtonElement;
+    const rightButton = document.getElementById('tabScrollRight') as HTMLButtonElement;
+
+    if (leftButton && rightButton) {
+      const canScrollLeft = this.tabsContainer.scrollLeft > 0;
+      const canScrollRight = this.tabsContainer.scrollLeft < 
+        (this.tabsContainer.scrollWidth - this.tabsContainer.clientWidth);
+
+      leftButton.disabled = !canScrollLeft;
+      rightButton.disabled = !canScrollRight;
+
+      // Update container classes for fade effects
+      const container = document.querySelector('.tab-scroll-container');
+      if (container) {
+        container.classList.toggle('can-scroll-left', canScrollLeft);
+        container.classList.toggle('can-scroll-right', canScrollRight);
+      }
+    }
+  }
+
+  /**
+   * Scroll tabs left or right
+   */
+  scrollTabs(direction: 'left' | 'right'): void {
+    if (!this.tabsContainer) return;
+
+    const scrollAmount = 200;
+    
+    if (direction === 'left') {
+      this.tabsContainer.scrollLeft -= scrollAmount;
+    } else {
+      this.tabsContainer.scrollLeft += scrollAmount;
+    }
+
+    // Update scroll buttons after scrolling
+    setTimeout(() => this.updateScrollButtons(), 100);
+  }
+
+  /**
+   * Setup keyboard shortcuts for tab management
+   */
+  private setupKeyboardShortcuts(): void {
     document.addEventListener('keydown', (e) => {
-      // Ctrl+W or Cmd+W to close tab
-      if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
+      // Ctrl+W - Close current tab
+      if (e.ctrlKey && e.key === 'w') {
         e.preventDefault();
-        const activeTab = this.getActiveTab();
-        if (activeTab) {
-          this.closeTab(activeTab.id);
+        if (this.activeTabId) {
+          this.removeTab(this.activeTabId);
         }
       }
 
-      // Ctrl+S or Cmd+S to save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        this.saveActiveTab();
-      }
-
-      // Ctrl+Shift+S or Cmd+Shift+S to save as
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
-        e.preventDefault();
-        this.saveActiveTabAs();
-      }
-
-      // Ctrl+Tab to switch between tabs
+      // Ctrl+Tab - Switch to next tab
       if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
         this.switchToNextTab();
+      }
+
+      // Ctrl+Shift+Tab - Switch to previous tab
+      if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
+        e.preventDefault();
+        this.switchToPreviousTab();
+      }
+
+      // Ctrl+1-9 - Switch to tab by index
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const index = parseInt(e.key) - 1;
+        if (index < this.tabs.length) {
+          this.switchToTab(this.tabs[index].id);
+        }
       }
     });
   }
@@ -410,33 +394,24 @@ export class TabManager {
    * Switch to next tab
    */
   private switchToNextTab(): void {
-    const tabs = this.getAllTabs();
-    if (tabs.length <= 1) {
-      return;
-    }
+    if (this.tabs.length <= 1) return;
 
-    const currentIndex = tabs.findIndex(tab => tab.id === this.activeTabId);
-    const nextIndex = (currentIndex + 1) % tabs.length;
-    this.switchTab(tabs[nextIndex].id);
+    const currentIndex = this.tabs.findIndex(tab => tab.id === this.activeTabId);
+    const nextIndex = (currentIndex + 1) % this.tabs.length;
+    this.switchToTab(this.tabs[nextIndex].id);
   }
 
   /**
-   * Show welcome screen
+   * Switch to previous tab
    */
-  private showWelcomeScreen(): void {
-    const welcomeScreen = document.getElementById('welcomeScreen');
-    if (welcomeScreen) {
-      welcomeScreen.style.display = 'flex';
-    }
-  }
+  private switchToPreviousTab(): void {
+    if (this.tabs.length <= 1) return;
 
-  /**
-   * Hide welcome screen
-   */
-  private hideWelcomeScreen(): void {
-    const welcomeScreen = document.getElementById('welcomeScreen');
-    if (welcomeScreen) {
-      welcomeScreen.style.display = 'none';
-    }
+    const currentIndex = this.tabs.findIndex(tab => tab.id === this.activeTabId);
+    const prevIndex = currentIndex === 0 ? this.tabs.length - 1 : currentIndex - 1;
+    this.switchToTab(this.tabs[prevIndex].id);
   }
 }
+
+// Global tab manager instance
+export const tabManager = new TabManager();

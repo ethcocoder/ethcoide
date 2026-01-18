@@ -6,10 +6,15 @@ export interface IPCMessage {
 
 // File operation types
 export interface FileOperation {
-  type: 'read' | 'write' | 'create' | 'delete' | 'rename' | 'watch';
+  type: 'read' | 'write' | 'create' | 'createDirectory' | 'delete' | 'deleteDirectory' | 
+        'rename' | 'copy' | 'watch' | 'stopWatching' | 'stat' | 'exists' | 'readDirectory' |
+        'getAbsolutePath' | 'getRelativePath' | 'joinPath' | 'getDirname' | 'getBasename' | 'getExtension';
   filePath: string;
   content?: string;
   newPath?: string;
+  paths?: string[];
+  extension?: string;
+  recursive?: boolean;
 }
 
 // AI request types
@@ -24,6 +29,13 @@ export interface ProjectOperation {
   type: 'load' | 'create' | 'refresh';
   rootPath?: string;
   template?: string;
+}
+
+// Key storage operation types
+export interface KeyStorageOperation {
+  type: 'setApiKey' | 'getApiKey' | 'deleteApiKey' | 'listApiKeys' | 'hasApiKey' | 'updateApiKey' | 'clearAllApiKeys';
+  keyName?: string;
+  apiKey?: string;
 }
 
 // Code context for AI operations

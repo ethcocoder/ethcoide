@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPCMessage, FileOperation, AIRequest, ProjectOperation } from '../types/ipc-messages';
+import { IPCMessage, FileOperation, AIRequest, ProjectOperation, KeyStorageOperation } from '../types/ipc-messages';
 
 // Validation functions for IPC messages
 function validateIPCMessage(message: any): message is IPCMessage {
@@ -11,7 +11,9 @@ function validateIPCMessage(message: any): message is IPCMessage {
 function validateFileOperation(operation: any): operation is FileOperation {
   return operation && 
          typeof operation.type === 'string' && 
-         ['read', 'write', 'create', 'delete', 'rename', 'watch'].includes(operation.type);
+         ['read', 'write', 'create', 'createDirectory', 'delete', 'deleteDirectory', 
+          'rename', 'copy', 'watch', 'stopWatching', 'stat', 'exists', 'readDirectory',
+          'getAbsolutePath', 'getRelativePath', 'joinPath', 'getDirname', 'getBasename', 'getExtension'].includes(operation.type);
 }
 
 function validateAIRequest(request: any): request is AIRequest {
@@ -24,6 +26,12 @@ function validateProjectOperation(operation: any): operation is ProjectOperation
   return operation && 
          typeof operation.type === 'string' && 
          ['load', 'create', 'refresh'].includes(operation.type);
+}
+
+function validateKeyStorageOperation(operation: any): operation is KeyStorageOperation {
+  return operation && 
+         typeof operation.type === 'string' && 
+         ['setApiKey', 'getApiKey', 'deleteApiKey', 'listApiKeys', 'hasApiKey', 'updateApiKey', 'clearAllApiKeys'].includes(operation.type);
 }
 
 // Secure API exposed to renderer
@@ -46,8 +54,16 @@ const electronAPI = {
       return ipcRenderer.invoke('file-operation', operation);
     },
 
-    async createFile(filePath: string): Promise<void> {
-      const operation: FileOperation = { type: 'create', filePath };
+    async createFile(filePath: string, content?: string): Promise<void> {
+      const operation: FileOperation = { type: 'create', filePath, content };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async createDirectory(dirPath: string): Promise<void> {
+      const operation: FileOperation = { type: 'createDirectory', filePath: dirPath };
       if (!validateFileOperation(operation)) {
         throw new Error('Invalid file operation');
       }
@@ -62,8 +78,40 @@ const electronAPI = {
       return ipcRenderer.invoke('file-operation', operation);
     },
 
-    async renameFile(oldPath: string, newPath: string): Promise<void> {
+    async deleteDirectory(dirPath: string, recursive?: boolean): Promise<void> {
+      const operation: FileOperation = { type: 'deleteDirectory', filePath: dirPath, recursive };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async rename(oldPath: string, newPath: string): Promise<void> {
       const operation: FileOperation = { type: 'rename', filePath: oldPath, newPath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async copyFile(sourcePath: string, targetPath: string): Promise<void> {
+      const operation: FileOperation = { type: 'copy', filePath: sourcePath, newPath: targetPath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async readDirectory(dirPath: string): Promise<any[]> {
+      const operation: FileOperation = { type: 'readDirectory', filePath: dirPath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async exists(filePath: string): Promise<boolean> {
+      const operation: FileOperation = { type: 'exists', filePath };
       if (!validateFileOperation(operation)) {
         throw new Error('Invalid file operation');
       }
@@ -72,6 +120,71 @@ const electronAPI = {
 
     async watchDirectory(dirPath: string): Promise<void> {
       const operation: FileOperation = { type: 'watch', filePath: dirPath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async stopWatching(dirPath: string): Promise<void> {
+      const operation: FileOperation = { type: 'stopWatching', filePath: dirPath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async stat(filePath: string): Promise<any> {
+      const operation: FileOperation = { type: 'stat', filePath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    // Path utilities
+    async getAbsolutePath(filePath: string): Promise<string> {
+      const operation: FileOperation = { type: 'getAbsolutePath', filePath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async getRelativePath(from: string, to: string): Promise<string> {
+      const operation: FileOperation = { type: 'getRelativePath', filePath: from, newPath: to };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async joinPath(...paths: string[]): Promise<string> {
+      const operation: FileOperation = { type: 'joinPath', filePath: '', paths };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async getDirname(filePath: string): Promise<string> {
+      const operation: FileOperation = { type: 'getDirname', filePath };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async getBasename(filePath: string, ext?: string): Promise<string> {
+      const operation: FileOperation = { type: 'getBasename', filePath, extension: ext };
+      if (!validateFileOperation(operation)) {
+        throw new Error('Invalid file operation');
+      }
+      return ipcRenderer.invoke('file-operation', operation);
+    },
+
+    async getExtension(filePath: string): Promise<string> {
+      const operation: FileOperation = { type: 'getExtension', filePath };
       if (!validateFileOperation(operation)) {
         throw new Error('Invalid file operation');
       }
@@ -138,6 +251,65 @@ const electronAPI = {
         throw new Error('Invalid project operation');
       }
       return ipcRenderer.invoke('project-operation', operation);
+    }
+  },
+
+  // Key storage operations
+  keyStorage: {
+    async setApiKey(keyName: string, apiKey: string): Promise<{ success: boolean }> {
+      const operation: KeyStorageOperation = { type: 'setApiKey', keyName, apiKey };
+      if (!validateKeyStorageOperation(operation)) {
+        throw new Error('Invalid key storage operation');
+      }
+      return ipcRenderer.invoke('key-storage-operation', operation);
+    },
+
+    async getApiKey(keyName: string): Promise<{ apiKey: string | null }> {
+      const operation: KeyStorageOperation = { type: 'getApiKey', keyName };
+      if (!validateKeyStorageOperation(operation)) {
+        throw new Error('Invalid key storage operation');
+      }
+      return ipcRenderer.invoke('key-storage-operation', operation);
+    },
+
+    async deleteApiKey(keyName: string): Promise<{ deleted: boolean }> {
+      const operation: KeyStorageOperation = { type: 'deleteApiKey', keyName };
+      if (!validateKeyStorageOperation(operation)) {
+        throw new Error('Invalid key storage operation');
+      }
+      return ipcRenderer.invoke('key-storage-operation', operation);
+    },
+
+    async listApiKeys(): Promise<{ keyNames: string[] }> {
+      const operation: KeyStorageOperation = { type: 'listApiKeys' };
+      if (!validateKeyStorageOperation(operation)) {
+        throw new Error('Invalid key storage operation');
+      }
+      return ipcRenderer.invoke('key-storage-operation', operation);
+    },
+
+    async hasApiKey(keyName: string): Promise<{ exists: boolean }> {
+      const operation: KeyStorageOperation = { type: 'hasApiKey', keyName };
+      if (!validateKeyStorageOperation(operation)) {
+        throw new Error('Invalid key storage operation');
+      }
+      return ipcRenderer.invoke('key-storage-operation', operation);
+    },
+
+    async updateApiKey(keyName: string, apiKey: string): Promise<{ success: boolean }> {
+      const operation: KeyStorageOperation = { type: 'updateApiKey', keyName, apiKey };
+      if (!validateKeyStorageOperation(operation)) {
+        throw new Error('Invalid key storage operation');
+      }
+      return ipcRenderer.invoke('key-storage-operation', operation);
+    },
+
+    async clearAllApiKeys(): Promise<{ success: boolean }> {
+      const operation: KeyStorageOperation = { type: 'clearAllApiKeys' };
+      if (!validateKeyStorageOperation(operation)) {
+        throw new Error('Invalid key storage operation');
+      }
+      return ipcRenderer.invoke('key-storage-operation', operation);
     }
   },
 

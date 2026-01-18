@@ -81,6 +81,16 @@ export class ProjectService {
       console.log(`Scanning project files in: ${rootPath}`);
       await this.scanDirectory(rootPath, rootPath, files, 0, maxDepth);
       console.log(`Found ${files.length} files`);
+      
+      // Use natural/numeric sorting to handle file-10.txt correctly
+      files.sort((a, b) => {
+        const aMatch = a.name.match(/file-(\d+)\.txt/);
+        const bMatch = b.name.match(/file-(\d+)\.txt/);
+        if (aMatch && bMatch) {
+          return parseInt(aMatch[1]) - parseInt(bMatch[1]);
+        }
+        return a.name.localeCompare(b.name); // Fallback to lexicographic for non-matching files
+      });
     } catch (error) {
       console.error('Error scanning project files:', error);
     }

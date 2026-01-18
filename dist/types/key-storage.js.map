@@ -1,0 +1,1 @@
+{"version":3,"file":"key-storage.js","sourceRoot":"","sources":["../../src/types/key-storage.ts"],"names":[],"mappings":";;;AAwCA;;GAEG;AACH,MAAa,eAAgB,SAAQ,KAAK;IACxC,YACE,OAAe,EACC,SAAiB,EACjB,OAAgB;QAEhC,KAAK,CAAC,OAAO,CAAC,CAAC;QAHC,cAAS,GAAT,SAAS,CAAQ;QACjB,YAAO,GAAP,OAAO,CAAS;QAGhC,IAAI,CAAC,IAAI,GAAG,iBAAiB,CAAC;IAChC,CAAC;CACF;AATD,0CASC"}

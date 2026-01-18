@@ -3,8 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:;">
     <title>AI-Powered IDE</title>
+    <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
+    <script type="module">
+        // Import tab manager
+        import { tabManager } from '../dist/editor/tabs.js';
+        window.tabManager = tabManager;
+    </script>
+    <script src="project-explorer.js"></script>
     <style>
         * {
             margin: 0;
@@ -23,14 +30,23 @@
 
         .app-container {
             display: grid;
-            grid-template-columns: 280px 1fr;
-            grid-template-rows: 40px 1fr 28px;
+            grid-template-columns: 280px 1fr 300px;
+            grid-template-rows: 40px 1fr 200px 28px;
             grid-template-areas: 
-                "titlebar titlebar"
-                "sidebar main"
-                "statusbar statusbar";
+                "titlebar titlebar titlebar"
+                "sidebar main panels"
+                "terminal terminal terminal"
+                "statusbar statusbar statusbar";
             height: 100vh;
             backdrop-filter: blur(10px);
+        }
+
+        .app-container.terminal-hidden {
+            grid-template-rows: 40px 1fr 28px;
+            grid-template-areas: 
+                "titlebar titlebar titlebar"
+                "sidebar main panels"
+                "statusbar statusbar statusbar";
         }
 
         /* Title Bar */
@@ -109,18 +125,374 @@
             display: flex;
             flex-direction: column;
             box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            height: 100%;
         }
 
+        /* Enhanced Explorer Header */
         .sidebar-header {
-            padding: 16px;
+            padding: 12px 16px;
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid #3a3a4a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .sidebar-header-left {
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .sidebar-icon {
+        .sidebar-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar-header:hover .sidebar-header-actions {
+            opacity: 1;
+        }
+
+        .sidebar-action-button {
+            width: 22px;
+            height: 22px;
+            background: transparent;
+            border: none;
+            color: #e8e8e8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+
+        .sidebar-action-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #00d4ff;
+        }
+
+        .sidebar-action-button:active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Enhanced File Items */
+        .file-item, .folder-item {
+            padding: 6px 8px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 6px;
+            margin: 1px 0;
+            transition: all 0.2s ease;
+            position: relative;
+            user-select: none;
+            min-height: 28px;
+            border: 1px solid transparent;
+        }
+
+        .file-item:hover, .folder-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.1);
+            transform: translateX(2px);
+        }
+
+        .file-item.selected, .folder-item.selected {
+            background: linear-gradient(45deg, #00d4ff25, #0099cc25);
+            color: #00d4ff;
+            border-color: #00d4ff40;
+            box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+        }
+
+        .file-item.selected::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, #00d4ff, #0099cc);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .file-item.focused {
+            outline: 2px solid #00d4ff;
+            outline-offset: -2px;
+        }
+
+        /* File/Folder Icons */
+        .file-icon, .folder-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .folder-item:hover .folder-icon {
+            transform: scale(1.1);
+        }
+
+        .file-item:hover .file-icon {
+            transform: scale(1.05);
+        }
+
+        .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 400;
+        }
+
+        .file-item.selected .file-name {
+            font-weight: 500;
+        }
+
+        .file-size {
+            font-size: 10px;
+            color: #888;
+            margin-left: 8px;
+            opacity: 0.7;
+            font-weight: 400;
+        }
+
+        .file-item:hover .file-size {
+            opacity: 1;
+        }
+
+        /* Folder Toggle */
+        .folder-toggle {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            font-size: 12px;
+            color: #b8b8b8;
+            margin-right: 4px;
+            font-weight: bold;
+        }
+
+        .folder-toggle:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #00d4ff;
+            transform: scale(1.1);
+        }
+
+        .folder-toggle.expanded {
+            transform: rotate(90deg);
+            color: #00d4ff;
+        }
+
+        .folder-toggle.expanded:hover {
+            transform: rotate(90deg) scale(1.1);
+        }
+
+        .folder-toggle.empty {
+            color: #666;
+            cursor: default;
+        }
+
+        .folder-toggle.empty:hover {
+            background: none;
+            transform: none;
+        }
+
+        /* Folder Children */
+        .folder-children {
+            margin-left: 12px;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            padding-left: 8px;
+            overflow: hidden;
+            transition: all 0.25s ease;
+        }
+
+        .folder-children.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-left: 0;
+            padding-left: 0;
+            border-left: none;
+        }
+
+        .folder-children.expanded {
+            max-height: 2000px;
+            opacity: 1;
+        }
+
+        /* Explorer Empty State */
+        .explorer-empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px 20px;
+            height: 100%;
+            min-height: 200px;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e8e8e8;
+            margin-bottom: 8px;
+        }
+
+        .empty-state-subtitle {
+            font-size: 13px;
+            color: #b8b8b8;
+            margin-bottom: 24px;
+            opacity: 0.8;
+        }
+
+        .empty-state-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .explorer-loading::after {
+            content: '';
+            width: 16px;
+            height: 16px;
+            border: 2px solid #3a3a4a;
+            border-top: 2px solid #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+
+        .file-explorer {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: #3a3a4a #1a1a2e;
+            max-height: calc(100vh - 200px);
+        }
+
+        .file-explorer::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .file-explorer::-webkit-scrollbar-track {
+            background: #1a1a2e;
+            border-radius: 4px;
+        }
+
+        .file-explorer::-webkit-scrollbar-thumb {
+            background: #3a3a4a;
+            border-radius: 4px;
+            border: 1px solid #2a2a3e;
+        }
+
+        .file-explorer::-webkit-scrollbar-thumb:hover {
+            background: #4a4a5a;
+        }
+
+        .file-explorer::-webkit-scrollbar-thumb:active {
+            background: #5a5a6a;
+        }
+
+        /* Main Content */
+        .main-content {
+            grid-area: main;
+            display: flex;
+            flex-direction: column;
+            background: #0f0f23;
+        }
+
+        /* Right Panels Container */
+        .right-panels {
+            grid-area: panels;
+            display: flex;
+            flex-direction: column;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+            border-left: 1px solid #3a3a4a;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .panels-tabs {
+            display: flex;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid #3a3a4a;
+            min-height: 40px;
+        }
+
+        .panel-tab {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #b8b8b8;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+            border-bottom: 2px solid transparent;
+        }
+
+        .panel-tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e8e8e8;
+        }
+
+        .panel-tab.active {
+            color: #00d4ff;
+            border-bottom-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .panel-content {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+        }
+
+        .panel-content.active {
+            display: flex;
+        }
+
+        .chat-header {
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid #3a3a4a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .chat-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chat-icon {
             width: 16px;
             height: 16px;
             background: linear-gradient(45deg, #00d4ff, #0099cc);
@@ -132,7 +504,7 @@
             color: white;
         }
 
-        .sidebar-title {
+        .chat-title {
             font-weight: 600;
             font-size: 12px;
             text-transform: uppercase;
@@ -140,37 +512,229 @@
             color: #b8b8b8;
         }
 
-        .file-explorer {
+        .chat-messages {
             flex: 1;
-            padding: 8px;
+            padding: 16px;
             overflow-y: auto;
             scrollbar-width: thin;
             scrollbar-color: #3a3a4a #1a1a2e;
         }
 
-        .file-explorer::-webkit-scrollbar {
+        .chat-messages::-webkit-scrollbar {
             width: 6px;
         }
 
-        .file-explorer::-webkit-scrollbar-track {
+        .chat-messages::-webkit-scrollbar-track {
             background: #1a1a2e;
         }
 
-        .file-explorer::-webkit-scrollbar-thumb {
+        .chat-messages::-webkit-scrollbar-thumb {
             background: #3a3a4a;
             border-radius: 3px;
         }
 
-        .file-explorer::-webkit-scrollbar-thumb:hover {
-            background: #4a4a5a;
+        .chat-message {
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.4;
         }
 
-        /* Main Content */
-        .main-content {
-            grid-area: main;
+        .chat-message.user {
+            background: linear-gradient(45deg, #00d4ff20, #0099cc20);
+            border-left: 3px solid #00d4ff;
+            margin-left: 20px;
+        }
+
+        .chat-message.ai {
+            background: rgba(255, 255, 255, 0.05);
+            border-left: 3px solid #4caf50;
+            margin-right: 20px;
+        }
+
+        .chat-input-container {
+            padding: 16px;
+            border-top: 1px solid #3a3a4a;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .chat-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #3a3a4a;
+            border-radius: 8px;
+            padding: 12px;
+            color: #e8e8e8;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.2s ease;
+            resize: vertical;
+            min-height: 40px;
+            max-height: 120px;
+        }
+
+        .chat-input:focus {
+            border-color: #00d4ff;
+            box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+        }
+
+        .chat-input::placeholder {
+            color: #b8b8b8;
+        }
+
+        .chat-send-button {
+            margin-top: 8px;
+            width: 100%;
+            background: linear-gradient(45deg, #00d4ff, #0099cc);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .chat-send-button:hover {
+            background: linear-gradient(45deg, #00b8e6, #0088bb);
+            transform: translateY(-1px);
+        }
+
+        .chat-send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .chat-welcome {
+            text-align: center;
+            color: #b8b8b8;
+            font-size: 13px;
+            margin-top: 40px;
+            opacity: 0.7;
+        }
+
+        .chat-welcome-icon {
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+
+        /* Terminal Panel */
+        .terminal-panel {
+            grid-area: terminal;
+            background: linear-gradient(180deg, #0f0f23 0%, #1a1a2e 100%);
+            border-top: 1px solid #3a3a4a;
             display: flex;
             flex-direction: column;
-            background: #0f0f23;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .terminal-header {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid #3a3a4a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 32px;
+        }
+
+        .terminal-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .terminal-icon {
+            width: 14px;
+            height: 14px;
+            background: linear-gradient(45deg, #4caf50, #45a049);
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: white;
+        }
+
+        .terminal-title {
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #b8b8b8;
+        }
+
+        .terminal-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .terminal-action-button {
+            width: 20px;
+            height: 20px;
+            background: transparent;
+            border: none;
+            color: #b8b8b8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            transition: all 0.2s ease;
+            font-size: 12px;
+        }
+
+        .terminal-action-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e8e8e8;
+        }
+
+        .terminal-content {
+            flex: 1;
+            background: #0a0a0a;
+            color: #00ff00;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            padding: 12px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #3a3a4a #0a0a0a;
+        }
+
+        .terminal-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .terminal-content::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+
+        .terminal-content::-webkit-scrollbar-thumb {
+            background: #3a3a4a;
+            border-radius: 3px;
+        }
+
+        .terminal-line {
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+
+        .terminal-prompt {
+            color: #00d4ff;
+        }
+
+        .terminal-input {
+            background: transparent;
+            border: none;
+            color: #00ff00;
+            font-family: inherit;
+            font-size: inherit;
+            outline: none;
+            width: 100%;
         }
 
         .tab-bar {
@@ -179,13 +743,100 @@
             display: flex;
             align-items: center;
             min-height: 42px;
-            padding: 0 16px;
-            gap: 2px;
-            overflow-x: auto;
-            scrollbar-width: none;
+            padding: 0 8px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .tab-bar::-webkit-scrollbar {
+        .tab-scroll-container {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .tab-scroll-container::before {
+            content: '';
+            position: absolute;
+            left: 48px;
+            top: 0;
+            bottom: 0;
+            width: 20px;
+            background: linear-gradient(to right, rgba(26, 26, 46, 0.8), transparent);
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .tab-scroll-container::after {
+            content: '';
+            position: absolute;
+            right: 80px;
+            top: 0;
+            bottom: 0;
+            width: 20px;
+            background: linear-gradient(to left, rgba(26, 26, 46, 0.8), transparent);
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .tab-scroll-container.can-scroll-left::before {
+            opacity: 1;
+        }
+
+        .tab-scroll-container.can-scroll-right::after {
+            opacity: 1;
+        }
+
+        .tab-scroll-button {
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #e8e8e8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            margin: 0 4px;
+            opacity: 0.7;
+        }
+
+        .tab-scroll-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            opacity: 1;
+        }
+
+        .tab-scroll-button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .tab-scroll-button:disabled:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tabs-container {
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scroll-behavior: smooth;
+            flex: 1;
+            gap: 2px;
+            padding: 0 4px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .tabs-container::-webkit-scrollbar {
             display: none;
         }
 
@@ -201,7 +852,10 @@
             gap: 8px;
             transition: all 0.2s ease;
             min-width: 120px;
+            max-width: 200px;
             position: relative;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .tab:hover {
@@ -233,11 +887,40 @@
             padding: 2px;
             border-radius: 3px;
             transition: all 0.2s ease;
+            margin-left: auto;
         }
 
         .tab-close:hover {
             opacity: 1;
             background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tab-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 8px;
+        }
+
+        .tab-action-button {
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #e8e8e8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .tab-action-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            opacity: 1;
         }
 
         .editor-container {
@@ -302,6 +985,34 @@
             gap: 16px;
             width: 100%;
             max-width: 400px;
+            margin-bottom: 40px;
+        }
+
+        .welcome-features {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-top: 20px;
+            opacity: 0.8;
+        }
+
+        .feature-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            text-align: center;
+        }
+
+        .feature-icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+
+        .feature-text {
+            font-size: 12px;
+            color: #b8b8b8;
+            font-weight: 500;
         }
 
         .welcome-button {
@@ -718,13 +1429,29 @@
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <div class="sidebar-icon">📁</div>
-                <div class="sidebar-title">Explorer</div>
+                <div class="sidebar-header-left">
+                    <div class="sidebar-icon">📁</div>
+                    <div class="sidebar-title">EXPLORER</div>
+                </div>
+                <div class="sidebar-header-actions">
+                    <button class="sidebar-action-button" onclick="projectExplorer?.createNewFile()" title="New File (Ctrl+N)">
+                        📄
+                    </button>
+                    <button class="sidebar-action-button" onclick="projectExplorer?.createNewFolder()" title="New Folder (Ctrl+Shift+N)">
+                        📁
+                    </button>
+                    <button class="sidebar-action-button" onclick="projectExplorer?.refreshExplorer()" title="Refresh Explorer (F5)">
+                        🔄
+                    </button>
+                    <button class="sidebar-action-button" onclick="projectExplorer?.collapseAllFolders()" title="Collapse All Folders">
+                        📁
+                    </button>
+                </div>
             </div>
             
             <!-- Search Box -->
             <div class="search-box">
-                <input type="text" class="search-input" placeholder="Search files..." id="fileSearch" onkeyup="filterFiles(this.value)">
+                <input type="text" class="search-input" placeholder="Search files..." id="fileSearch" onkeyup="projectExplorer?.filterFiles(this.value)">
             </div>
             
             <!-- Breadcrumb -->
@@ -733,9 +1460,15 @@
             </div>
             
             <div class="file-explorer" id="fileExplorer">
-                <div style="text-align: center; color: #b8b8b8; font-size: 13px; margin-top: 40px; opacity: 0.7;">
-                    <div style="font-size: 24px; margin-bottom: 8px;">📂</div>
-                    No folder opened
+                <div class="explorer-empty-state">
+                    <div class="empty-state-icon">📂</div>
+                    <div class="empty-state-title">No Folder Opened</div>
+                    <div class="empty-state-subtitle">Open a folder to start exploring your project</div>
+                    <div class="empty-state-actions">
+                        <button class="welcome-button secondary" onclick="openFolder()" style="font-size: 12px; padding: 8px 16px;">
+                            📁 Open Folder
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -744,7 +1477,25 @@
         <div class="main-content">
             <!-- Tab Bar -->
             <div class="tab-bar" id="tabBar">
-                <!-- Tabs will be dynamically added here -->
+                <div class="tab-scroll-container">
+                    <button class="tab-scroll-button" id="tabScrollLeft" onclick="tabManagerInstance?.scrollTabs('left')" disabled>
+                        ◀
+                    </button>
+                    <div class="tabs-container" id="tabsContainer">
+                        <!-- Tabs will be dynamically added here -->
+                    </div>
+                    <button class="tab-scroll-button" id="tabScrollRight" onclick="tabManagerInstance?.scrollTabs('right')" disabled>
+                        ▶
+                    </button>
+                </div>
+                <div class="tab-actions">
+                    <button class="tab-action-button" onclick="closeAllTabs()" title="Close All Tabs">
+                        ✕
+                    </button>
+                    <button class="tab-action-button" onclick="splitEditor()" title="Split Editor">
+                        ⧉
+                    </button>
+                </div>
             </div>
 
             <!-- Editor Container -->
@@ -753,27 +1504,100 @@
                     <div class="welcome-logo">E</div>
                     <h1 class="welcome-title">Ethco IDE</h1>
                     <p class="welcome-subtitle">
-                        A revolutionary desktop IDE with AI assistance powered by Gemini API.<br>
-                        Experience the future of coding with intelligent suggestions and seamless workflow.
+                        A professional desktop IDE with AI assistance powered by Gemini API.<br>
+                        Experience intelligent coding with modern tools and seamless workflow.
                     </p>
                     <div class="welcome-actions">
                         <button class="welcome-button" onclick="openFile()">
                             📄 Open File
                         </button>
                         <button class="welcome-button secondary" onclick="openFolder()">
-                            📁 Open Folder
+                            📁 Open Project
                         </button>
-                        <button class="welcome-button secondary" onclick="testFileRead()">
-                            🧪 Test File Read
-                        </button>
-                        <button class="welcome-button secondary" onclick="testProjectLoad()">
-                            🔬 Test Project Load
-                        </button>
+                    </div>
+                    <div class="welcome-features">
+                        <div class="feature-item">
+                            <div class="feature-icon">🤖</div>
+                            <div class="feature-text">AI-Powered Assistance</div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">⚡</div>
+                            <div class="feature-text">Lightning Fast</div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">🎨</div>
+                            <div class="feature-text">Modern Interface</div>
+                        </div>
                     </div>
                 </div>
                 
                 <!-- Monaco Editor will be mounted here -->
                 <div id="monacoEditor" style="display: none; width: 100%; height: 100%;"></div>
+            </div>
+        </div>
+
+        <!-- Right Panels Container -->
+        <div class="right-panels" id="rightPanels">
+            <div class="panels-tabs">
+                <button class="panel-tab active" onclick="switchPanel('chat')" id="chatTab">
+                    🤖 AI Assistant
+                </button>
+                <button class="panel-tab" onclick="switchPanel('terminal')" id="terminalTab">
+                    💻 Terminal
+                </button>
+            </div>
+            
+            <!-- AI Chat Panel -->
+            <div class="panel-content active" id="chatPanel">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-welcome">
+                        <div class="chat-welcome-icon">🤖</div>
+                        <div>AI Assistant Ready</div>
+                        <div style="font-size: 11px; margin-top: 8px; opacity: 0.6;">
+                            Ask me anything about your code!
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <textarea 
+                        class="chat-input" 
+                        id="chatInput" 
+                        placeholder="Ask AI about your code..."
+                        onkeydown="handleChatKeydown(event)"
+                    ></textarea>
+                    <button class="chat-send-button" onclick="sendChatMessage()">
+                        Send Message
+                    </button>
+                </div>
+            </div>
+
+            <!-- Terminal Panel -->
+            <div class="panel-content" id="terminalPanelContent">
+                <div class="terminal-header">
+                    <div class="terminal-header-left">
+                        <div class="terminal-icon">$</div>
+                        <div class="terminal-title">TERMINAL</div>
+                    </div>
+                    <div class="terminal-actions">
+                        <button class="terminal-action-button" onclick="clearTerminal()" title="Clear Terminal">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="terminal-content" id="terminalContent">
+                    <div class="terminal-line">
+                        <span class="terminal-prompt">ethco-ide:~$</span> Welcome to Ethco IDE Terminal
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-prompt">ethco-ide:~$</span> Type 'help' for available commands
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-prompt">ethco-ide:~$</span> 
+                        <input type="text" class="terminal-input" id="terminalInput" onkeydown="handleTerminalKeydown(event)" placeholder="Enter command...">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -825,12 +1649,16 @@
     <script>
         // Global variables
         let currentProject = null;
-        let openTabs = [];
-        let activeTabId = null;
         let monacoEditor = null;
         let expandedFolders = new Set();
         let selectedItem = null;
         let contextMenuTarget = null;
+
+        // Tab manager will be available globally after module loads
+        let tabManagerInstance = null;
+
+        // Project explorer instance
+        let projectExplorer = null;
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', () => {
@@ -841,6 +1669,18 @@
                 showError('Electron API not available. Please restart the application.');
                 return;
             }
+
+            // Initialize project explorer
+            projectExplorer = new ProjectExplorer();
+            window.projectExplorer = projectExplorer; // Make it globally accessible
+
+            // Wait for tab manager to be available
+            setTimeout(() => {
+                if (window.tabManager) {
+                    tabManagerInstance = window.tabManager;
+                    setupTabManagerCallbacks();
+                }
+            }, 100);
 
             // Initialize basic functionality without Monaco for now
             setupBasicFunctionality();
@@ -857,11 +1697,36 @@
             window.electronAPI.events.onProjectChanged((projectData) => {
                 console.log('Project changed:', projectData);
                 currentProject = projectData;
-                updateFileExplorer();
+                if (projectExplorer) {
+                    projectExplorer.currentProject = projectData;
+                    projectExplorer.updateFileExplorer();
+                }
             });
 
             console.log('AI-Powered IDE initialized successfully');
         });
+
+        function setupTabManagerCallbacks() {
+            if (!tabManagerInstance) return;
+
+            // Set up tab change callback
+            tabManagerInstance.setOnTabChange((tab) => {
+                if (tab && monacoEditor) {
+                    loadFileInMonaco(tab.fileName, tab.content);
+                    document.getElementById('welcomeScreen').style.display = 'none';
+                    document.getElementById('monacoEditor').style.display = 'block';
+                } else if (!tab) {
+                    // No tabs open, show welcome screen
+                    document.getElementById('welcomeScreen').style.display = 'flex';
+                    document.getElementById('monacoEditor').style.display = 'none';
+                }
+            });
+
+            // Set up tab close callback
+            tabManagerInstance.setOnTabClose((tab) => {
+                console.log('Tab closed:', tab.fileName);
+            });
+        }
 
         function setupEventListeners() {
             // Hide context menu when clicking elsewhere
@@ -875,26 +1740,129 @@
             document.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
             });
+            
+            // Initialize tab scrolling
+            initializeTabScrolling();
+            
+            // Initialize sidebar scrolling
+            initializeSidebarScrolling();
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Tab manager handles its own keyboard shortcuts
+                // Additional shortcuts can be added here if needed
+            });
         }
 
+        // Initialize sidebar scrolling
+        function initializeSidebarScrolling() {
+            const fileExplorer = document.getElementById('fileExplorer');
+            
+            if (fileExplorer) {
+                console.log('Initializing sidebar scrolling...');
+                
+                // Ensure smooth scrolling
+                fileExplorer.style.scrollBehavior = 'smooth';
+                
+                // Add mouse wheel support for better scrolling
+                fileExplorer.addEventListener('wheel', (e) => {
+                    // Let the default scrolling behavior work
+                    // This ensures smooth scrolling in the sidebar
+                }, { passive: true });
+                
+                // Add keyboard navigation support
+                fileExplorer.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        const direction = e.key === 'ArrowUp' ? -1 : 1;
+                        fileExplorer.scrollTop += direction * 30;
+                    }
+                });
+            }
+        }
+
+
+
         function setupBasicFunctionality() {
-            // For now, we'll use a simple textarea as the editor
-            // This will be replaced with Monaco Editor once we fix the integration
-            const editorContainer = document.getElementById('monacoEditor');
-            editorContainer.innerHTML = `
-                <textarea id="simpleEditor" style="
-                    width: 100%; 
-                    height: 100%; 
-                    background: #1e1e1e; 
-                    color: #d4d4d4; 
-                    border: none; 
-                    font-family: 'Consolas', monospace; 
-                    font-size: 14px; 
-                    padding: 10px;
-                    resize: none;
-                    outline: none;
-                " placeholder="Open a file to start editing..."></textarea>
-            `;
+            // Initialize Monaco Editor
+            initializeMonacoEditor();
+        }
+
+        function initializeMonacoEditor() {
+            require.config({ paths: { vs: '../node_modules/monaco-editor/min/vs' } });
+            
+            require(['vs/editor/editor.main'], function () {
+                // Configure Monaco Editor
+                monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                    target: monaco.languages.typescript.ScriptTarget.ES2020,
+                    allowNonTsExtensions: true,
+                    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                    module: monaco.languages.typescript.ModuleKind.CommonJS,
+                    noEmit: true,
+                    esModuleInterop: true,
+                    jsx: monaco.languages.typescript.JsxEmit.React,
+                    allowJs: true
+                });
+
+                // Configure diagnostics
+                monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+                    noSemanticValidation: false,
+                    noSyntaxValidation: false
+                });
+
+                // Define custom theme
+                monaco.editor.defineTheme('ai-ide-dark', {
+                    base: 'vs-dark',
+                    inherit: true,
+                    rules: [
+                        { token: 'comment', foreground: '6A9955' },
+                        { token: 'keyword', foreground: '569CD6' },
+                        { token: 'string', foreground: 'CE9178' },
+                        { token: 'number', foreground: 'B5CEA8' },
+                        { token: 'type', foreground: '4EC9B0' },
+                        { token: 'class', foreground: '4EC9B0' },
+                        { token: 'function', foreground: 'DCDCAA' },
+                        { token: 'variable', foreground: '9CDCFE' }
+                    ],
+                    colors: {
+                        'editor.background': '#1e1e1e',
+                        'editor.foreground': '#d4d4d4',
+                        'editorLineNumber.foreground': '#858585',
+                        'editorLineNumber.activeForeground': '#c6c6c6',
+                        'editor.selectionBackground': '#264f78',
+                        'editor.selectionHighlightBackground': '#add6ff26'
+                    }
+                });
+
+                monaco.editor.setTheme('ai-ide-dark');
+                
+                console.log('Monaco Editor initialized successfully');
+            });
+        }
+
+        function getLanguageForFile(fileName) {
+            const extension = fileName.toLowerCase().split('.').pop();
+            
+            const languageMap = {
+                'ts': 'typescript',
+                'tsx': 'typescript',
+                'js': 'javascript',
+                'jsx': 'javascript',
+                'py': 'python',
+                'json': 'json',
+                'html': 'html',
+                'htm': 'html',
+                'css': 'css',
+                'scss': 'scss',
+                'less': 'less',
+                'md': 'markdown',
+                'yml': 'yaml',
+                'yaml': 'yaml',
+                'xml': 'xml',
+                'txt': 'plaintext'
+            };
+
+            return languageMap[extension] || 'plaintext';
         }
 
         // File operations
@@ -908,131 +1876,223 @@
                 }
                 
                 showLoading(true);
+                updateStatus('Opening file dialog...');
+                
                 const result = await window.electronAPI.system.showOpenDialog({
                     properties: ['openFile'],
                     filters: [
                         { name: 'All Files', extensions: ['*'] },
-                        { name: 'JavaScript', extensions: ['js', 'jsx'] },
-                        { name: 'TypeScript', extensions: ['ts', 'tsx'] },
-                        { name: 'Python', extensions: ['py'] },
-                        { name: 'Text Files', extensions: ['txt', 'md'] }
-                    ]
+                        { name: 'JavaScript Files', extensions: ['js', 'jsx', 'mjs'] },
+                        { name: 'TypeScript Files', extensions: ['ts', 'tsx', 'd.ts'] },
+                        { name: 'Python Files', extensions: ['py', 'pyw', 'pyi'] },
+                        { name: 'Text Files', extensions: ['txt', 'md', 'rst'] },
+                        { name: 'JSON Files', extensions: ['json', 'jsonc'] },
+                        { name: 'HTML Files', extensions: ['html', 'htm', 'xhtml'] },
+                        { name: 'CSS Files', extensions: ['css', 'scss', 'sass', 'less'] },
+                        { name: 'XML Files', extensions: ['xml', 'xsl', 'xsd'] },
+                        { name: 'YAML Files', extensions: ['yml', 'yaml'] },
+                        { name: 'Configuration Files', extensions: ['conf', 'config', 'ini', 'env'] }
+                    ],
+                    title: 'Open File - Select a file to edit',
+                    buttonLabel: 'Open File'
                 });
 
                 console.log('File dialog result:', result);
 
-                if (!result.canceled && result.filePaths.length > 0) {
-                    await openFileInEditor(result.filePaths[0]);
+                if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+                    const selectedPath = result.filePaths[0];
+                    console.log('Selected file:', selectedPath);
+                    
+                    // Verify it's actually a file, not a directory
+                    try {
+                        const stats = await window.electronAPI.fileOperations.stat(selectedPath);
+                        if (stats.isDirectory) {
+                            showError('Please select a file, not a folder. Use "Open Folder" to open projects.');
+                            updateStatus('Invalid selection - folder selected instead of file');
+                            return;
+                        }
+                    } catch (statError) {
+                        console.warn('Could not verify file stats:', statError);
+                    }
+                    
+                    await openFileInEditor(selectedPath);
+                } else {
+                    console.log('File dialog was canceled');
+                    updateStatus('File selection canceled');
                 }
             } catch (error) {
-                console.error('Failed to open file:', error);
-                showError('Failed to open file: ' + error.message);
+                console.error('Failed to open file dialog:', error);
+                showError('Failed to open file dialog: ' + error.message);
+                updateStatus('Failed to open file dialog');
             } finally {
                 showLoading(false);
             }
         }
 
         async function openFolder() {
-            try {
-                console.log('Opening folder dialog...');
-                
-                // Check if electronAPI is available
-                if (!window.electronAPI || !window.electronAPI.system) {
-                    throw new Error('Electron API not available');
-                }
-                
-                showLoading(true);
-                const result = await window.electronAPI.system.showOpenDialog({
-                    properties: ['openDirectory']
-                });
-
-                console.log('Folder dialog result:', result);
-
-                if (!result.canceled && result.filePaths.length > 0) {
-                    await loadProject(result.filePaths[0]);
-                }
-            } catch (error) {
-                console.error('Failed to open folder:', error);
-                showError('Failed to open folder: ' + error.message);
-            } finally {
-                showLoading(false);
+            if (projectExplorer) {
+                await projectExplorer.openFolder();
+            } else {
+                showError('Project explorer not initialized');
             }
         }
 
         async function openFileInEditor(filePath) {
             try {
-                console.log('Opening file:', filePath);
+                console.log('Opening file in editor:', filePath);
                 
                 // Check if electronAPI is available
                 if (!window.electronAPI || !window.electronAPI.fileOperations) {
                     throw new Error('Electron API not available');
                 }
-                
-                // Check if file is already open
-                const existingTab = openTabs.find(tab => tab.filePath === filePath);
-                if (existingTab) {
-                    switchToTab(existingTab.id);
-                    return;
-                }
+
+                showLoading(true);
+                updateStatus('Loading file...');
 
                 // Read file content
-                console.log('Reading file content...');
+                console.log('Reading file content from:', filePath);
                 const content = await window.electronAPI.fileOperations.readFile(filePath);
-                console.log('File content loaded, length:', content.length);
+                console.log('File content loaded successfully, length:', content.length);
                 
-                // Create new tab
-                const tab = {
-                    id: Date.now().toString(),
-                    filePath: filePath,
-                    fileName: filePath.split(/[/\\]/).pop(),
-                    content: content,
-                    isDirty: false
-                };
+                // Extract filename from path
+                const fileName = filePath.split(/[/\\]/).pop() || 'untitled';
+                
+                // Use tab manager to add the tab
+                if (tabManagerInstance) {
+                    const tab = tabManagerInstance.addTab(filePath, fileName, content);
+                    console.log('Tab created using TabManager:', tab);
+                } else {
+                    // Fallback to old method if tab manager not available
+                    console.warn('TabManager not available, using fallback');
+                    const tab = {
+                        id: Date.now().toString(),
+                        filePath: filePath,
+                        fileName: fileName,
+                        content: content,
+                        isDirty: false
+                    };
 
-                openTabs.push(tab);
-                createTabElement(tab);
-                switchToTab(tab.id);
-                
-                // Hide welcome screen and show editor
-                document.getElementById('welcomeScreen').style.display = 'none';
-                document.getElementById('monacoEditor').style.display = 'block';
-                
-                console.log('File opened successfully:', tab.fileName);
-                
-            } catch (error) {
-                console.error('Failed to open file:', error);
-                showError('Failed to open file: ' + error.message);
-            }
-        }
-
-        async function loadProject(folderPath) {
-            try {
-                console.log('Loading project:', folderPath);
-                
-                // Check if electronAPI is available
-                if (!window.electronAPI || !window.electronAPI.projectOperations) {
-                    throw new Error('Electron API not available');
+                    // Create Monaco Editor if not exists
+                    const editorContainer = document.getElementById('monacoEditor');
+                    if (editorContainer) {
+                        document.getElementById('welcomeScreen').style.display = 'none';
+                        editorContainer.style.display = 'block';
+                        
+                        if (!monacoEditor) {
+                            createMonacoEditor(editorContainer, fileName, content);
+                        } else {
+                            loadFileInMonaco(fileName, content);
+                        }
+                    }
                 }
                 
-                showLoading(true);
-                const project = await window.electronAPI.projectOperations.loadProject(folderPath);
-                console.log('Project loaded:', project);
+                updateStatus(`Opened: ${fileName}`);
+                console.log('File opened successfully in editor:', fileName);
                 
-                currentProject = project;
-                updateFileExplorer();
-                updateStatus(`Loaded project: ${project.rootPath}`);
-                console.log('Project loaded successfully:', project.rootPath);
             } catch (error) {
-                console.error('Failed to load project:', error);
-                showError('Failed to load project: ' + error.message);
+                console.error('Failed to open file in editor:', error);
+                showError('Failed to open file: ' + error.message);
+                updateStatus('Failed to open file');
             } finally {
                 showLoading(false);
             }
         }
 
+        function createMonacoEditor(container, fileName, content) {
+            require(['vs/editor/editor.main'], function () {
+                const language = getLanguageForFile(fileName);
+                
+                monacoEditor = monaco.editor.create(container, {
+                    value: content,
+                    language: language,
+                    theme: 'ai-ide-dark',
+                    automaticLayout: true,
+                    fontSize: 14,
+                    fontFamily: 'Consolas, "Courier New", monospace',
+                    lineNumbers: 'on',
+                    roundedSelection: false,
+                    scrollBeyondLastLine: false,
+                    readOnly: false,
+                    minimap: {
+                        enabled: true
+                    },
+                    suggestOnTriggerCharacters: true,
+                    acceptSuggestionOnEnter: 'on',
+                    tabCompletion: 'on',
+                    wordBasedSuggestions: 'off',
+                    parameterHints: {
+                        enabled: true
+                    },
+                    quickSuggestions: {
+                        other: true,
+                        comments: false,
+                        strings: false
+                    },
+                    folding: true,
+                    foldingStrategy: 'indentation',
+                    showFoldingControls: 'mouseover',
+                    matchBrackets: 'always',
+                    autoIndent: 'full',
+                    formatOnPaste: true,
+                    formatOnType: true,
+                    renderWhitespace: 'selection',
+                    renderControlCharacters: false,
+                    guides: {
+                        indentation: true
+                    },
+                    cursorBlinking: 'blink',
+                    cursorSmoothCaretAnimation: 'on',
+                    smoothScrolling: true,
+                    mouseWheelZoom: true
+                });
+
+                // Setup editor event handlers
+                monacoEditor.onDidChangeModelContent(() => {
+                    // Mark current tab as dirty
+                    if (activeTabId) {
+                        const tab = openTabs.find(t => t.id === activeTabId);
+                        if (tab && !tab.isDirty) {
+                            tab.isDirty = true;
+                            updateTabTitle(tab);
+                        }
+                    }
+                });
+
+                monacoEditor.focus();
+                console.log('Monaco Editor created successfully');
+            });
+        }
+
+        function loadFileInMonaco(fileName, content) {
+            if (!monacoEditor) return;
+            
+            const language = getLanguageForFile(fileName);
+            const model = monaco.editor.createModel(content, language);
+            monacoEditor.setModel(model);
+            monacoEditor.focus();
+        }
+
+        async function loadProject(folderPath) {
+            if (projectExplorer) {
+                try {
+                    const project = await projectExplorer.loadProject(folderPath);
+                    currentProject = project;
+                } catch (error) {
+                    console.error('Failed to load project:', error);
+                }
+            }
+        }
+
         // Tab management
         function createTabElement(tab) {
-            const tabBar = document.getElementById('tabBar');
+            console.log('Creating tab element for:', tab);
+            const tabsContainer = document.getElementById('tabsContainer');
+            
+            if (!tabsContainer) {
+                console.error('Tabs container not found!');
+                return;
+            }
+            
             const tabElement = document.createElement('div');
             tabElement.className = 'tab';
             tabElement.dataset.tabId = tab.id;
@@ -1041,7 +2101,7 @@
             tabElement.innerHTML = `
                 <span class="tab-icon">${fileIcon}</span>
                 <span class="tab-name">${tab.fileName}</span>
-                <span class="tab-close">&times;</span>
+                <span class="tab-close" onclick="closeTab('${tab.id}', event)">&times;</span>
             `;
             
             tabElement.addEventListener('click', (e) => {
@@ -1050,12 +2110,14 @@
                 }
             });
 
-            tabElement.querySelector('.tab-close').addEventListener('click', (e) => {
-                e.stopPropagation();
-                closeTab(tab.id);
-            });
-
-            tabBar.appendChild(tabElement);
+            tabsContainer.appendChild(tabElement);
+            console.log('Tab element added to container. Total tabs in DOM:', tabsContainer.children.length);
+            
+            // Update scroll buttons after adding tab
+            updateTabScrollButtons();
+            
+            // Scroll to show the new tab
+            scrollToTab(tabElement);
         }
 
         function switchToTab(tabId) {
@@ -1069,19 +2131,33 @@
                 tabElement.classList.add('active');
                 activeTabId = tabId;
                 
-                // Load content in editor
+                // Scroll to show active tab
+                scrollToTab(tabElement);
+                
+                // Load content in Monaco editor
                 const tab = openTabs.find(t => t.id === tabId);
-                if (tab) {
-                    const editor = document.getElementById('simpleEditor');
-                    if (editor) {
-                        editor.value = tab.content || '';
-                    }
+                if (tab && monacoEditor) {
+                    loadFileInMonaco(tab.fileName, tab.content);
                     console.log('Switched to tab:', tab.fileName);
                 }
             }
         }
 
-        function closeTab(tabId) {
+        function updateTabTitle(tab) {
+            const tabElement = document.querySelector(`[data-tab-id="${tab.id}"]`);
+            if (tabElement) {
+                const titleElement = tabElement.querySelector('.tab-title');
+                if (titleElement) {
+                    titleElement.textContent = tab.isDirty ? `${tab.fileName} •` : tab.fileName;
+                }
+            }
+        }
+
+        function closeTab(tabId, event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            
             const tabIndex = openTabs.findIndex(tab => tab.id === tabId);
             if (tabIndex === -1) return;
 
@@ -1094,6 +2170,9 @@
                 tabElement.remove();
             }
 
+            // Update scroll buttons
+            updateTabScrollButtons();
+
             // Switch to another tab or show welcome screen
             if (openTabs.length > 0) {
                 const newActiveTab = openTabs[Math.max(0, tabIndex - 1)];
@@ -1102,6 +2181,160 @@
                 activeTabId = null;
                 document.getElementById('welcomeScreen').style.display = 'flex';
                 document.getElementById('monacoEditor').style.display = 'none';
+            }
+        }
+
+        // Tab scrolling functionality
+        function scrollTabs(direction) {
+            const tabsContainer = document.getElementById('tabsContainer');
+            const scrollAmount = 200; // pixels to scroll
+            
+            if (direction === 'left') {
+                tabsContainer.scrollLeft -= scrollAmount;
+            } else {
+                tabsContainer.scrollLeft += scrollAmount;
+            }
+            
+            // Update scroll buttons after scrolling
+            setTimeout(updateTabScrollButtons, 100);
+        }
+
+        function updateTabScrollButtons() {
+            const tabsContainer = document.getElementById('tabsContainer');
+            const scrollLeftButton = document.getElementById('scrollTabsLeft');
+            const scrollRightButton = document.getElementById('scrollTabsRight');
+            const scrollContainer = document.querySelector('.tab-scroll-container');
+            
+            if (!tabsContainer || !scrollLeftButton || !scrollRightButton || !scrollContainer) return;
+            
+            const canScrollLeft = tabsContainer.scrollLeft > 0;
+            const canScrollRight = tabsContainer.scrollLeft < (tabsContainer.scrollWidth - tabsContainer.clientWidth);
+            
+            scrollLeftButton.disabled = !canScrollLeft;
+            scrollRightButton.disabled = !canScrollRight;
+            
+            // Update visual indicators
+            if (canScrollLeft) {
+                scrollContainer.classList.add('can-scroll-left');
+            } else {
+                scrollContainer.classList.remove('can-scroll-left');
+            }
+            
+            if (canScrollRight) {
+                scrollContainer.classList.add('can-scroll-right');
+            } else {
+                scrollContainer.classList.remove('can-scroll-right');
+            }
+        }
+
+        function scrollToTab(tabElement) {
+            const tabsContainer = document.getElementById('tabsContainer');
+            if (!tabsContainer || !tabElement) return;
+            
+            const containerRect = tabsContainer.getBoundingClientRect();
+            const tabRect = tabElement.getBoundingClientRect();
+            
+            // Check if tab is fully visible
+            if (tabRect.left < containerRect.left) {
+                // Tab is cut off on the left, scroll left
+                tabsContainer.scrollLeft -= (containerRect.left - tabRect.left + 20);
+            } else if (tabRect.right > containerRect.right) {
+                // Tab is cut off on the right, scroll right
+                tabsContainer.scrollLeft += (tabRect.right - containerRect.right + 20);
+            }
+            
+            // Update scroll buttons
+            setTimeout(updateTabScrollButtons, 100);
+        }
+
+        // Tab actions
+        function closeAllTabs() {
+            if (openTabs.length === 0) return;
+            
+            if (confirm(`Close all ${openTabs.length} tabs?`)) {
+                // Clear all tabs
+                openTabs = [];
+                activeTabId = null;
+                
+                // Clear tab container
+                const tabsContainer = document.getElementById('tabsContainer');
+                tabsContainer.innerHTML = '';
+                
+                // Update scroll buttons
+                updateTabScrollButtons();
+                
+                // Show welcome screen
+                document.getElementById('welcomeScreen').style.display = 'flex';
+                document.getElementById('monacoEditor').style.display = 'none';
+            }
+        }
+
+        function splitEditor() {
+            // TODO: Implement split editor functionality
+            showError('Split editor not implemented yet');
+        }
+
+        // Initialize tab scroll listeners
+        function initializeTabScrolling() {
+            const tabsContainer = document.getElementById('tabsContainer');
+            const tabBar = document.getElementById('tabBar');
+            
+            console.log('Initializing tab scrolling...', { tabsContainer, tabBar });
+            
+            if (tabsContainer) {
+                // Update scroll buttons when user scrolls manually
+                tabsContainer.addEventListener('scroll', () => {
+                    updateTabScrollButtons();
+                });
+            }
+            
+            // Handle mouse wheel scrolling on entire tab bar area
+            if (tabBar) {
+                tabBar.addEventListener('wheel', (e) => {
+                    console.log('Tab bar wheel event:', e.deltaX, e.deltaY);
+                    
+                    // Only handle when there are tabs and scrolling is needed
+                    if (tabsContainer && openTabs.length > 0) {
+                        const canScroll = tabsContainer.scrollWidth > tabsContainer.clientWidth;
+                        
+                        if (canScroll) {
+                            e.preventDefault();
+                            
+                            // Use deltaX for horizontal scroll, or deltaY for vertical-to-horizontal conversion
+                            let scrollAmount = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+                            
+                            // Increase scroll sensitivity
+                            scrollAmount *= 1.5;
+                            
+                            console.log('Scrolling tabs by:', scrollAmount);
+                            tabsContainer.scrollLeft += scrollAmount;
+                            updateTabScrollButtons();
+                        }
+                    }
+                }, { passive: false });
+            }
+            
+            // Also add wheel event to tabs container specifically
+            if (tabsContainer) {
+                tabsContainer.addEventListener('wheel', (e) => {
+                    console.log('Tabs container wheel event:', e.deltaX, e.deltaY);
+                    
+                    const canScroll = tabsContainer.scrollWidth > tabsContainer.clientWidth;
+                    
+                    if (canScroll) {
+                        e.preventDefault();
+                        
+                        // Use deltaX for horizontal scroll, or deltaY for vertical-to-horizontal conversion
+                        let scrollAmount = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+                        
+                        // Increase scroll sensitivity
+                        scrollAmount *= 1.5;
+                        
+                        console.log('Scrolling tabs by:', scrollAmount);
+                        tabsContainer.scrollLeft += scrollAmount;
+                        updateTabScrollButtons();
+                    }
+                }, { passive: false });
             }
         }
 
@@ -1117,102 +2350,9 @@
             return iconMap[extension] || '📄';
         }
 
-        // File explorer
-        function updateFileExplorer() {
-            const explorer = document.getElementById('fileExplorer');
-            
-            if (!currentProject || !currentProject.files) {
-                explorer.innerHTML = '<div style="text-align: center; color: #969696; font-size: 13px; margin-top: 20px;">No folder opened</div>';
-                return;
-            }
+        // File explorer functions are now handled by ProjectExplorer class
 
-            console.log('Updating file explorer with', currentProject.files.length, 'files');
-            console.log('Files:', currentProject.files);
-            explorer.innerHTML = '';
-            
-            // Group files by directory
-            const fileTree = buildFileTree(currentProject.files);
-            console.log('File tree:', fileTree);
-            renderFileTree(explorer, fileTree);
-        }
-
-        function buildFileTree(files) {
-            console.log('Building file tree from files:', files);
-            const tree = {};
-            
-            files.forEach(file => {
-                console.log('Processing file:', file);
-                const parts = file.path.split(/[/\\]/);
-                let current = tree;
-                
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts[i];
-                    if (!part) continue; // Skip empty parts
-                    
-                    if (!current[part]) {
-                        current[part] = i === parts.length - 1 ? file : {};
-                    }
-                    current = current[part];
-                }
-            });
-            
-            console.log('Built file tree:', tree);
-            return tree;
-        }
-
-        function renderFileTree(container, tree, level = 0) {
-            console.log('Rendering file tree at level', level, ':', tree);
-            Object.keys(tree).forEach(key => {
-                const item = tree[key];
-                const itemElement = document.createElement('div');
-                itemElement.className = 'file-item';
-                itemElement.style.paddingLeft = (level * 15) + 'px';
-                
-                if (item.path) {
-                    // It's a file
-                    console.log('Rendering file:', key, item);
-                    const ext = item.extension ? item.extension.toLowerCase() : '';
-                    let iconClass = 'file-icon';
-                    if (ext === '.js' || ext === '.jsx') iconClass = 'js-file';
-                    else if (ext === '.ts' || ext === '.tsx') iconClass = 'ts-file';
-                    else if (ext === '.py') iconClass = 'py-file';
-                    else if (ext === '.md') iconClass = 'md-file';
-                    else if (ext === '.html') iconClass = 'html-file';
-                    else if (ext === '.css') iconClass = 'css-file';
-                    else if (ext === '.json') iconClass = 'json-file';
-                    
-                    itemElement.innerHTML = `<span class="${iconClass}"></span><span>${key}</span>`;
-                    itemElement.onclick = () => {
-                        // Construct the full path properly for the current platform
-                        const isWindows = currentProject.rootPath.includes('\\');
-                        const separator = isWindows ? '\\' : '/';
-                        let fullPath;
-                        
-                        if (isWindows) {
-                            // Windows: convert forward slashes to backslashes
-                            fullPath = currentProject.rootPath + '\\' + item.path.replace(/\//g, '\\');
-                        } else {
-                            // Unix-like: use forward slashes
-                            fullPath = currentProject.rootPath + '/' + item.path;
-                        }
-                        
-                        console.log('Clicking on file:', fullPath);
-                        openFileInEditor(fullPath);
-                    };
-                } else {
-                    // It's a folder
-                    console.log('Rendering folder:', key);
-                    itemElement.innerHTML = `<span class="folder-icon"></span><span>${key}</span>`;
-                }
-                
-                container.appendChild(itemElement);
-                
-                // Recursively render subfolders
-                if (!item.path) {
-                    renderFileTree(container, item, level + 1);
-                }
-            });
-        }
+        // File explorer functions are now handled by ProjectExplorer class
 
         // Utility functions
         function showLoading(show) {
@@ -1276,6 +2416,371 @@
                 updateStatus('Project load test failed');
             } finally {
                 showLoading(false);
+            }
+        }
+
+        // Test function to create multiple tabs for testing scrolling
+        function createTestTabs() {
+            console.log('Creating test tabs...');
+            
+            const testFiles = [
+                'index.html', 'style.css', 'script.js', 'package.json', 'README.md',
+                'config.json', 'main.ts', 'utils.js', 'components.tsx', 'api.py',
+                'database.sql', 'docker-compose.yml', 'webpack.config.js', 'tsconfig.json'
+            ];
+            
+            testFiles.forEach((fileName, index) => {
+                const tab = {
+                    id: `test-${Date.now()}-${index}`,
+                    filePath: `/test/${fileName}`,
+                    fileName: fileName,
+                    content: `// Test content for ${fileName}\nconsole.log('Hello from ${fileName}');`,
+                    isDirty: false
+                };
+                
+                openTabs.push(tab);
+                createTabElement(tab);
+            });
+            
+            if (openTabs.length > 0) {
+                switchToTab(openTabs[0].id);
+                document.getElementById('welcomeScreen').style.display = 'none';
+                document.getElementById('monacoEditor').style.display = 'block';
+            }
+            
+            console.log('Created', testFiles.length, 'test tabs');
+            updateStatus(`Created ${testFiles.length} test tabs for scrolling test`);
+        }
+
+        // Panel switching functionality
+        function switchPanel(panelName) {
+            // Update tab states
+            document.querySelectorAll('.panel-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(panelName + 'Tab').classList.add('active');
+            
+            // Update panel content states
+            document.querySelectorAll('.panel-content').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            if (panelName === 'chat') {
+                document.getElementById('chatPanel').classList.add('active');
+            } else if (panelName === 'terminal') {
+                document.getElementById('terminalPanelContent').classList.add('active');
+                // Focus terminal input when switching to terminal
+                setTimeout(() => {
+                    const terminalInput = document.getElementById('terminalInput');
+                    if (terminalInput) {
+                        terminalInput.focus();
+                    }
+                }, 100);
+            }
+        }
+
+        // AI Chat functionality
+        function handleChatKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendChatMessage();
+            }
+        }
+
+        function sendChatMessage() {
+            const chatInput = document.getElementById('chatInput');
+            const message = chatInput.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message to chat
+            addChatMessage(message, 'user');
+            
+            // Clear input
+            chatInput.value = '';
+            
+            // Show typing indicator
+            showTypingIndicator();
+            
+            // Simulate AI response (replace with actual AI integration later)
+            setTimeout(() => {
+                hideTypingIndicator();
+                const aiResponse = generateMockAIResponse(message);
+                addChatMessage(aiResponse, 'ai');
+            }, 1500);
+        }
+
+        function addChatMessage(message, sender) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageElement = document.createElement('div');
+            messageElement.className = `chat-message ${sender}`;
+            messageElement.textContent = message;
+            
+            // Remove welcome message if it exists
+            const welcome = chatMessages.querySelector('.chat-welcome');
+            if (welcome) {
+                welcome.remove();
+            }
+            
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const chatMessages = document.getElementById('chatMessages');
+            const typingElement = document.createElement('div');
+            typingElement.className = 'chat-message ai typing-indicator';
+            typingElement.innerHTML = '🤖 AI is thinking...';
+            typingElement.id = 'typingIndicator';
+            
+            chatMessages.appendChild(typingElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        function generateMockAIResponse(userMessage) {
+            const responses = [
+                "I'd be happy to help you with that! Can you share more details about your code?",
+                "That's an interesting question! Let me analyze your current file and provide suggestions.",
+                "Based on your code, I can see a few ways to improve this. Would you like me to explain?",
+                "Great question! Here are some best practices for this type of code...",
+                "I notice you're working on " + (activeTabId ? "this file" : "your project") + ". How can I assist you?",
+                "Let me help you with that. Can you select the specific code you'd like me to review?"
+            ];
+            
+            return responses[Math.floor(Math.random() * responses.length)];
+        }
+
+        // Terminal functionality
+        function handleTerminalKeydown(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                executeTerminalCommand();
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                // TODO: Implement command history
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                // TODO: Implement command history
+            }
+        }
+
+        function executeTerminalCommand() {
+            const terminalInput = document.getElementById('terminalInput');
+            const command = terminalInput.value.trim();
+            
+            if (!command) return;
+            
+            // Add command to terminal
+            addTerminalLine(`ethco-ide:~$ ${command}`);
+            
+            // Clear input
+            terminalInput.value = '';
+            
+            // Execute command
+            processTerminalCommand(command);
+            
+            // Add new prompt line
+            addTerminalPrompt();
+        }
+
+        function processTerminalCommand(command) {
+            const args = command.split(' ');
+            const cmd = args[0].toLowerCase();
+            
+            switch (cmd) {
+                case 'help':
+                    addTerminalLine('Available commands:');
+                    addTerminalLine('  help     - Show this help message');
+                    addTerminalLine('  clear    - Clear terminal');
+                    addTerminalLine('  ls       - List files in current directory');
+                    addTerminalLine('  pwd      - Show current directory');
+                    addTerminalLine('  echo     - Echo text');
+                    addTerminalLine('  date     - Show current date and time');
+                    addTerminalLine('  version  - Show IDE version');
+                    break;
+                    
+                case 'clear':
+                    clearTerminal();
+                    return; // Don't add new prompt, clearTerminal does it
+                    
+                case 'ls':
+                    if (currentProject && currentProject.files) {
+                        addTerminalLine('Files in current project:');
+                        currentProject.files.slice(0, 10).forEach(file => {
+                            addTerminalLine(`  ${file.name}`);
+                        });
+                        if (currentProject.files.length > 10) {
+                            addTerminalLine(`  ... and ${currentProject.files.length - 10} more files`);
+                        }
+                    } else {
+                        addTerminalLine('No project opened');
+                    }
+                    break;
+                    
+                case 'pwd':
+                    if (currentProject) {
+                        addTerminalLine(currentProject.rootPath);
+                    } else {
+                        addTerminalLine('No project opened');
+                    }
+                    break;
+                    
+                case 'echo':
+                    const text = args.slice(1).join(' ');
+                    addTerminalLine(text || '');
+                    break;
+                    
+                case 'date':
+                    addTerminalLine(new Date().toString());
+                    break;
+                    
+                case 'version':
+                    addTerminalLine('Ethco IDE v1.0.0');
+                    addTerminalLine('Built with Electron and Monaco Editor');
+                    break;
+                    
+                default:
+                    addTerminalLine(`Command not found: ${cmd}`);
+                    addTerminalLine('Type "help" for available commands');
+                    break;
+            }
+        }
+
+        function addTerminalLine(text) {
+            const terminalContent = document.getElementById('terminalContent');
+            const lineElement = document.createElement('div');
+            lineElement.className = 'terminal-line';
+            lineElement.textContent = text;
+            
+            // Remove the current input line
+            const currentInput = terminalContent.querySelector('.terminal-input').parentElement;
+            currentInput.remove();
+            
+            terminalContent.appendChild(lineElement);
+            terminalContent.scrollTop = terminalContent.scrollHeight;
+        }
+
+        function addTerminalPrompt() {
+            const terminalContent = document.getElementById('terminalContent');
+            const promptElement = document.createElement('div');
+            promptElement.className = 'terminal-line';
+            promptElement.innerHTML = `
+                <span class="terminal-prompt">ethco-ide:~$</span> 
+                <input type="text" class="terminal-input" id="terminalInput" onkeydown="handleTerminalKeydown(event)" placeholder="Enter command...">
+            `;
+            
+            terminalContent.appendChild(promptElement);
+            terminalContent.scrollTop = terminalContent.scrollHeight;
+            
+            // Focus the new input
+            const newInput = promptElement.querySelector('.terminal-input');
+            newInput.focus();
+        }
+
+        function clearTerminal() {
+            const terminalContent = document.getElementById('terminalContent');
+            terminalContent.innerHTML = `
+                <div class="terminal-line">
+                    <span class="terminal-prompt">ethco-ide:~$</span> Terminal cleared
+                </div>
+                <div class="terminal-line">
+                    <span class="terminal-prompt">ethco-ide:~$</span> 
+                    <input type="text" class="terminal-input" id="terminalInput" onkeydown="handleTerminalKeydown(event)" placeholder="Enter command...">
+                </div>
+            `;
+            
+            // Focus the input
+            document.getElementById('terminalInput').focus();
+        }
+
+        function toggleTerminal() {
+            const terminalPanel = document.getElementById('terminalPanel');
+            const isVisible = terminalPanel.style.display !== 'none';
+            
+            if (isVisible) {
+                terminalPanel.style.display = 'none';
+                // Adjust grid to hide terminal
+                document.querySelector('.app-container').style.gridTemplateRows = '40px 1fr 28px';
+                document.querySelector('.app-container').style.gridTemplateAreas = `
+                    "titlebar titlebar titlebar"
+                    "sidebar main chatpanel"
+                    "statusbar statusbar statusbar"
+                `;
+            } else {
+                terminalPanel.style.display = 'flex';
+                // Restore grid with terminal
+                document.querySelector('.app-container').style.gridTemplateRows = '40px 1fr 200px 28px';
+                document.querySelector('.app-container').style.gridTemplateAreas = `
+                    "titlebar titlebar titlebar"
+                    "sidebar main chatpanel"
+                    "terminal terminal terminal"
+                    "statusbar statusbar statusbar"
+                `;
+            }
+        }
+
+        // Old file explorer functions are now handled by ProjectExplorer class
+
+        function contextMenuAction(action) {
+            if (projectExplorer) {
+                projectExplorer.hideContextMenu();
+                
+                switch (action) {
+                    case 'newFile':
+                        projectExplorer.createNewFile();
+                        break;
+                    case 'newFolder':
+                        projectExplorer.createNewFolder();
+                        break;
+                    case 'rename':
+                        projectExplorer.renameSelectedItem();
+                        break;
+                    case 'delete':
+                        projectExplorer.deleteSelectedItem();
+                        break;
+                    case 'copy':
+                        showError('Copy not implemented yet');
+                        break;
+                    case 'paste':
+                        showError('Paste not implemented yet');
+                        break;
+                }
+            }
+        }
+
+        // File creation functions are now handled by ProjectExplorer class
+
+        // Panel switching functionality
+        function switchPanel(panelName) {
+            // Update tab states
+            document.querySelectorAll('.panel-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(panelName + 'Tab').classList.add('active');
+            
+            // Update panel content states
+            document.querySelectorAll('.panel-content').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            if (panelName === 'chat') {
+                document.getElementById('chatPanel').classList.add('active');
+            } else if (panelName === 'terminal') {
+                document.getElementById('terminalPanelContent').classList.add('active');
+                // Focus terminal input when switching to terminal
+                setTimeout(() => {
+                    const terminalInput = document.getElementById('terminalInput');
+                    if (terminalInput) {
+                        terminalInput.focus();
+                    }
+                }, 100);
             }
         }
     </script>

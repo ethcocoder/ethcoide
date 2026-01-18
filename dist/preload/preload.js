@@ -10,7 +10,9 @@ function validateIPCMessage(message) {
 function validateFileOperation(operation) {
     return operation &&
         typeof operation.type === 'string' &&
-        ['read', 'write', 'create', 'delete', 'rename', 'watch'].includes(operation.type);
+        ['read', 'write', 'create', 'createDirectory', 'delete', 'deleteDirectory',
+            'rename', 'copy', 'watch', 'stopWatching', 'stat', 'exists', 'readDirectory',
+            'getAbsolutePath', 'getRelativePath', 'joinPath', 'getDirname', 'getBasename', 'getExtension'].includes(operation.type);
 }
 function validateAIRequest(request) {
     return request &&
@@ -21,6 +23,11 @@ function validateProjectOperation(operation) {
     return operation &&
         typeof operation.type === 'string' &&
         ['load', 'create', 'refresh'].includes(operation.type);
+}
+function validateKeyStorageOperation(operation) {
+    return operation &&
+        typeof operation.type === 'string' &&
+        ['setApiKey', 'getApiKey', 'deleteApiKey', 'listApiKeys', 'hasApiKey', 'updateApiKey', 'clearAllApiKeys'].includes(operation.type);
 }
 // Secure API exposed to renderer
 const electronAPI = {
@@ -40,8 +47,15 @@ const electronAPI = {
             }
             return electron_1.ipcRenderer.invoke('file-operation', operation);
         },
-        async createFile(filePath) {
-            const operation = { type: 'create', filePath };
+        async createFile(filePath, content) {
+            const operation = { type: 'create', filePath, content };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async createDirectory(dirPath) {
+            const operation = { type: 'createDirectory', filePath: dirPath };
             if (!validateFileOperation(operation)) {
                 throw new Error('Invalid file operation');
             }
@@ -54,8 +68,36 @@ const electronAPI = {
             }
             return electron_1.ipcRenderer.invoke('file-operation', operation);
         },
-        async renameFile(oldPath, newPath) {
+        async deleteDirectory(dirPath, recursive) {
+            const operation = { type: 'deleteDirectory', filePath: dirPath, recursive };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async rename(oldPath, newPath) {
             const operation = { type: 'rename', filePath: oldPath, newPath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async copyFile(sourcePath, targetPath) {
+            const operation = { type: 'copy', filePath: sourcePath, newPath: targetPath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async readDirectory(dirPath) {
+            const operation = { type: 'readDirectory', filePath: dirPath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async exists(filePath) {
+            const operation = { type: 'exists', filePath };
             if (!validateFileOperation(operation)) {
                 throw new Error('Invalid file operation');
             }
@@ -63,6 +105,63 @@ const electronAPI = {
         },
         async watchDirectory(dirPath) {
             const operation = { type: 'watch', filePath: dirPath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async stopWatching(dirPath) {
+            const operation = { type: 'stopWatching', filePath: dirPath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async stat(filePath) {
+            const operation = { type: 'stat', filePath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        // Path utilities
+        async getAbsolutePath(filePath) {
+            const operation = { type: 'getAbsolutePath', filePath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async getRelativePath(from, to) {
+            const operation = { type: 'getRelativePath', filePath: from, newPath: to };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async joinPath(...paths) {
+            const operation = { type: 'joinPath', filePath: '', paths };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async getDirname(filePath) {
+            const operation = { type: 'getDirname', filePath };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async getBasename(filePath, ext) {
+            const operation = { type: 'getBasename', filePath, extension: ext };
+            if (!validateFileOperation(operation)) {
+                throw new Error('Invalid file operation');
+            }
+            return electron_1.ipcRenderer.invoke('file-operation', operation);
+        },
+        async getExtension(filePath) {
+            const operation = { type: 'getExtension', filePath };
             if (!validateFileOperation(operation)) {
                 throw new Error('Invalid file operation');
             }
@@ -122,6 +221,58 @@ const electronAPI = {
                 throw new Error('Invalid project operation');
             }
             return electron_1.ipcRenderer.invoke('project-operation', operation);
+        }
+    },
+    // Key storage operations
+    keyStorage: {
+        async setApiKey(keyName, apiKey) {
+            const operation = { type: 'setApiKey', keyName, apiKey };
+            if (!validateKeyStorageOperation(operation)) {
+                throw new Error('Invalid key storage operation');
+            }
+            return electron_1.ipcRenderer.invoke('key-storage-operation', operation);
+        },
+        async getApiKey(keyName) {
+            const operation = { type: 'getApiKey', keyName };
+            if (!validateKeyStorageOperation(operation)) {
+                throw new Error('Invalid key storage operation');
+            }
+            return electron_1.ipcRenderer.invoke('key-storage-operation', operation);
+        },
+        async deleteApiKey(keyName) {
+            const operation = { type: 'deleteApiKey', keyName };
+            if (!validateKeyStorageOperation(operation)) {
+                throw new Error('Invalid key storage operation');
+            }
+            return electron_1.ipcRenderer.invoke('key-storage-operation', operation);
+        },
+        async listApiKeys() {
+            const operation = { type: 'listApiKeys' };
+            if (!validateKeyStorageOperation(operation)) {
+                throw new Error('Invalid key storage operation');
+            }
+            return electron_1.ipcRenderer.invoke('key-storage-operation', operation);
+        },
+        async hasApiKey(keyName) {
+            const operation = { type: 'hasApiKey', keyName };
+            if (!validateKeyStorageOperation(operation)) {
+                throw new Error('Invalid key storage operation');
+            }
+            return electron_1.ipcRenderer.invoke('key-storage-operation', operation);
+        },
+        async updateApiKey(keyName, apiKey) {
+            const operation = { type: 'updateApiKey', keyName, apiKey };
+            if (!validateKeyStorageOperation(operation)) {
+                throw new Error('Invalid key storage operation');
+            }
+            return electron_1.ipcRenderer.invoke('key-storage-operation', operation);
+        },
+        async clearAllApiKeys() {
+            const operation = { type: 'clearAllApiKeys' };
+            if (!validateKeyStorageOperation(operation)) {
+                throw new Error('Invalid key storage operation');
+            }
+            return electron_1.ipcRenderer.invoke('key-storage-operation', operation);
         }
     },
     // System operations

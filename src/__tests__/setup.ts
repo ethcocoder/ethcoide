@@ -28,6 +28,15 @@ import 'jest-environment-jsdom';
       showSaveDialog: jest.fn(),
       showMessageBox: jest.fn()
     },
+    keyStorage: {
+      setApiKey: jest.fn(),
+      getApiKey: jest.fn(),
+      deleteApiKey: jest.fn(),
+      listApiKeys: jest.fn(),
+      hasApiKey: jest.fn(),
+      updateApiKey: jest.fn(),
+      clearAllApiKeys: jest.fn()
+    },
     events: {
       onFileChanged: jest.fn(),
       onProjectChanged: jest.fn(),
